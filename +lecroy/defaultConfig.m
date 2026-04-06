@@ -12,7 +12,7 @@ cfg = struct();
 
 % ---- Connection ----
 cfg.connection = struct();
-cfg.connection.resource = "USBO::0x05ff:0x1023:4609N02990:INSTR"; % replace with scope VISA address
+cfg.connection.resource = "USB0::0x05FF::0x1023::4609N02990::0::INSTR"; % replace with scope VISA address
 cfg.connection.transport = "USBTMC";
 cfg.connection.timeoutSeconds = 60;
 cfg.connection.preferVisadev = true;

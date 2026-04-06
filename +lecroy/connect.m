@@ -4,12 +4,11 @@ function session = connect(cfg)
 arguments
     cfg struct
 end
-
-resource = char(cfg.connection.resource);
+resource = cfg.connection.resource;
 preferVisadev = isfield(cfg.connection,'preferVisadev') && cfg.connection.preferVisadev;
 
 if preferVisadev && exist('visadev','file') == 2
-    io = visadev(resource);
+    io = visadev(resource)
     io.Timeout = cfg.connection.timeoutSeconds;
     if isprop(io,'ByteOrder')
         io.ByteOrder = 'little-endian';

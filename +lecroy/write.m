@@ -8,7 +8,8 @@ end
 
 cmd = string(cmd);
 if session.backend == "visadev"
-    writeline(session.io, char(cmd));
+    cmd=char(cmd);
+    writeline(session.io, cmd);
 else
     fprintf(session.io, '%s', char(cmd));
 end
