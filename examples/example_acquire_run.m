@@ -42,29 +42,38 @@ cfg.acquisition.setupCommands = [ ...
 % establish session
 session = [];
 try
-session = lecroy.connect(cfg);
+    session = lecroy.connect(cfg);
+    
+    if cfg.acquisition.stopBeforeSetup
+        lecroy.tryWriteLine(session, "STOP");
+    end
+    
+    if cfg.acquisition.clearSweeps
+        lecroy.tryWriteLine(session, "CLSW");
+    end
+    
+    % Optional user setup commands before arming
+    lecroy.runCommandList(session, cfg.acquisition.setupCommands);
+    
+    % Arm acquisition if requested
+    switch lower(string(cfg.acquisition.acquireMode))
+        case "single"
+            lecroy.tryWriteLine(session, "TRMD SINGLE");
+            lecroy.waitForAcquisitionComplete(session, cfg.acquisition.waitTimeoutSeconds);
+        otherwise
+            error("lecroy.acquireRun:UnsupportedAcquireMode", ...
+                "Unsupported acquireMode: %s", cfg.acquisition.acquireMode);
+    end
+        catch ME
+        if ~isempty(session)
+            try
+                clear session %#ok<NASGU>
+            catch
+            end
+        end
+        rethrow(ME);
+    end
 
-if cfg.acquisition.stopBeforeSetup
-    lecroy.tryWriteLine(session, "STOP");
-end
-
-if cfg.acquisition.clearSweeps
-    lecroy.tryWriteLine(session, "CLSW");
-end
-
-% Optional user setup commands before arming
-runCommandList(session, cfg.acquisition.setupCommands);
-
-% Arm acquisition if requested
-switch lower(string(cfg.acquisition.acquireMode))
-    case "single"
-        lecroy.tryWriteLine(session, "TRMD SINGLE");
-        waitForAcquisitionComplete(session, cfg.acquisition.waitTimeoutSeconds);
-    otherwise
-        error("lecroy.acquireRun:UnsupportedAcquireMode", ...
-            "Unsupported acquireMode: %s", cfg.acquisition.acquireMode);
-end
-end
 
 result = lecroy.acquireRun(cfg,session);
 disp(result.manifestPath)
