@@ -13,7 +13,7 @@ addpath(fileparts(fileparts(mfilename('fullpath'))));
 
 cfg = lecroy.defaultConfig();
 cfg.storage.rootDir = fullfile(pwd, 'captures');
-cfg.acquisition.runIndex = 0;
+cfg = lecroy.updateConfig(cfg);
 
 %  fixed setup commands
 cfg.acquisition.setupCommands = [ ...

@@ -56,7 +56,7 @@ function result = acquireRun(cfg)
         end
 
         % Build storage paths
-        runDir = buildRunDir(cfg.storage, cfg.acquisition.runIndex);
+        runDir = lecroy.buildRunDir(cfg.storage, cfg.acquisition.runIndex);
 
         if ~exist(runDir, 'dir')
             mkdir(runDir);
@@ -260,29 +260,8 @@ function setTimeout(session, val)
     end
 end
 
-function runDir = buildRunDir(storageCfg, runIndex)
-    rootDir = storageCfg.rootDir;
 
-    if storageCfg.createDateFolder
-        dateDir = char(datetime('today', 'Format', 'yyyy-MM-dd'));
-        rootDir = fullfile(rootDir, dateDir);
-    end
 
-    runDirName = sprintf(char(storageCfg.runFolderPattern), runIndex);
-    runDir = fullfile(rootDir, runDirName);
-end
-
-function dateDir = buildDateDir(storageCfg)
-    rootDir = storageCfg.rootDir;
-
-    if storageCfg.createDateFolder
-        % TODO add check if already exist
-        dateDir = char(datetime('today', 'Format', 'yyyy-MM-dd'));
-        rootDir = fullfile(rootDir, dateDir);
-    end
-
-    dateDir = rootDir;
-end
 
 function writeTwoColumnCsv(csvPath, t, y, headerLines)
     outDir = fileparts(csvPath);
