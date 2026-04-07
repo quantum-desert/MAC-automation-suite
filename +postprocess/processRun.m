@@ -29,6 +29,19 @@ phys1 = postprocess.build_physics(cfg.physics.file1,cfg.phys_constants,cfg.const
 phys2 = postprocess.build_physics(cfg.physics.file2,cfg.phys_constants,cfg.constants);
 summary = postprocess.displayReport(tank_S1, tank_S2, phys1, phys2);
 
+pp = struct();
+pp.runIndex = cfg.postprocess.runIndex;
+pp.S1.SNRe = tank_S1.fit.SNRe;
+pp.S1.SNR_C = phys1.SNR_C;
+pp.S1.beatsClassical = tank_S1.fit.SNRe > phys1.SNR_C;
+
+pp.S2.SNRe = tank_S2.fit.SNRe;
+pp.S2.SNR_C = phys2.SNR_C;
+pp.S2.beatsClassical = tank_S2.fit.SNRe > phys2.SNR_C;
+
+pp.anyBeatsClassical = pp.S1.beatsClassical || pp.S2.beatsClassical;
+pp.bothBeatClassical = pp.S1.beatsClassical && pp.S2.beatsClassical;
+
 result = struct();
 result.runFolder = string(runFolder);
 result.cfg = cfg;
