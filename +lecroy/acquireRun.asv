@@ -64,13 +64,13 @@ function result = acquireRun(cfg)
 
         % Read all requested channels using WFALL parser only
         channelData = struct();
-        % parserFcn = str2func(cfg.transfer.parser.functionName);
+        parserFcn = str2func(cfg.transfer.parser.functionName);
 
         for ch = cfg.acquisition.channels
             chanName = "C" + string(ch);
 
-            wf = lecroy.lecroy_waveform_all_parser( ...
-                session.io, chanName, ...
+            wf = lecroy_waveform( ...
+                session, chanName, ...
                 "AcquireSingle", cfg.transfer.parser.acquireSingle, ...
                 "TimeoutSeconds", cfg.transfer.parser.timeoutSeconds, ...
                 "CommFormat", cfg.transfer.parser.commFormat, ...
@@ -229,7 +229,7 @@ function waitForAcquisitionComplete(session, timeoutSeconds)
     io=session.io; % assign to actual object
 
     oldTimeout = io.Timeout;
-    c = onCleanup(@() setTimeout(session, oldTimeout));
+    c = onCleanup(@() setTimeout(io, oldTimeout));
     io.Timeout = timeoutSeconds;
 
     writeline(io, "*OPC?");

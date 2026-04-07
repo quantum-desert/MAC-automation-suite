@@ -10,6 +10,7 @@ clear all;
 
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 
+
 cfg = lecroy.defaultConfig();
 cfg.storage.rootDir = fullfile(pwd, 'captures');
 cfg.acquisition.runIndex = 0;

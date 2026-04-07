@@ -1,5 +1,3 @@
-
-
 function out = lecroy_waveform_all_parser(io, chan, varargin)
 %LECROY_WAVEFORM_ALL_PARSER Setup, acquire, and parse a LeCroy WF? ALL transfer.
 %
