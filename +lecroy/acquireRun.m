@@ -1,4 +1,4 @@
-function result = acquireRun(cfg)
+function result = acquireRun(cfg,session)
 % lecroy.acquireRun  Acquire one run from the oscilloscope using WF? ALL only.
 %
 % This version assumes:
@@ -22,30 +22,7 @@ function result = acquireRun(cfg)
 
     validateConfig(cfg);
 
-    session = [];
-    try
-        session = lecroy.connect(cfg);
-
-        if cfg.acquisition.stopBeforeSetup
-            tryWriteLine(session, "STOP");
-        end
-
-        if cfg.acquisition.clearSweeps
-            tryWriteLine(session, "CLSW");
-        end
-
-        % Optional user setup commands before arming
-        runCommandList(session, cfg.acquisition.setupCommands);
-
-        % Arm acquisition if requested
-        switch lower(string(cfg.acquisition.acquireMode))
-            case "single"
-                tryWriteLine(session, "TRMD SINGLE");
-                waitForAcquisitionComplete(session, cfg.acquisition.waitTimeoutSeconds);
-            otherwise
-                error("lecroy.acquireRun:UnsupportedAcquireMode", ...
-                    "Unsupported acquireMode: %s", cfg.acquisition.acquireMode);
-        end
+    
 
         % Optional post-arm commands
         runCommandList(session, cfg.acquisition.postArmCommands);
@@ -140,6 +117,14 @@ function result = acquireRun(cfg)
             fprintf(fid, '%s', jsonencode(manifest, 'PrettyPrint', true));
         end
 
+        % Auto-prettify run artifacts
+        if isfield(cfg.storage, 'writePrettyArtifacts') && cfg.storage.writePrettyArtifacts
+            pretty = lecroy.prettifyRunArtifacts(string(runDir), ...
+                struct('manifest', manifest, 'channelData', channelData), cfg);
+        else
+            pretty = struct();
+        end
+
         % Return
         result = struct();
         result.runDir = runDir;
@@ -147,6 +132,7 @@ function result = acquireRun(cfg)
         result.channelData = channelData;
         result.matPath = matPath;
         result.manifestPath = manifestPath;
+        result.pretty = pretty;
 
         if isfield(cfg.logging, 'verbose') && cfg.logging.verbose
             fprintf('Acquisition complete. Run folder: %s\n', runDir);
@@ -214,13 +200,10 @@ function runCommandList(session, cmds)
         if strlength(cmd) == 0
             continue;
         end
-        tryWriteLine(session, cmd);
+        lecroy.tryWriteLine(session, cmd);
     end
 end
 
-function tryWriteLine(session, cmd)
-    writeline(session.io, char(cmd));
-end
 
 function waitForAcquisitionComplete(session, timeoutSeconds)
     if nargin < 2 || isempty(timeoutSeconds)
