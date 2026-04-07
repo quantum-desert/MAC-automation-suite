@@ -24,17 +24,11 @@ try
     
     % Optional user setup commands before arming
     lecroy.runCommandList(session, cfg.acquisition.setupCommands);
+
+    % arm
+    lecroy.setupTrigger(cfg,session);
     
-    % Arm acquisition if requested
-    switch lower(string(cfg.acquisition.acquireMode))
-        case "single"
-            lecroy.tryWriteLine(session, "TRMD SINGLE");
-            lecroy.waitForAcquisitionComplete(session, cfg.acquisition.waitTimeoutSeconds);
-        otherwise
-            error("lecroy.acquireRun:UnsupportedAcquireMode", ...
-                "Unsupported acquireMode: %s", cfg.acquisition.acquireMode);
-    end
-        catch ME
+catch ME
         if ~isempty(session)
             try
                 clear session %#ok<NASGU>
@@ -42,7 +36,8 @@ try
             end
         end
         rethrow(ME);
-    end
+end
+
 
 
 % Configure the sweep timer here.

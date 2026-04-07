@@ -87,14 +87,15 @@ classdef Brain < handle
                 end
 
                 runIndex = runIndex + 1;
+
+                % scoreboard
+                if obj.cfg.brain.processAfterAcquire
+                    obj = obj.recordPostprocess(acq, entry.processing);
+                end
+
                 if obj.cfg.brain.pauseBetweenRunsSeconds > 0
                     pause(obj.cfg.brain.pauseBetweenRunsSeconds);
                 end
-            end
-
-            % scoreboard
-            if obj.cfg.brain.processAfterAcquire
-                obj = obj.recordPostprocess(acq, entry.processing);
             end
 
             obj.finishedAt = datetime('now');
@@ -257,7 +258,7 @@ classdef Brain < handle
             % Update summary counters
             % ------------------------------------------------------------
             summary = struct();
-            summary.totalRuns = height(obj.brainReport);
+            summary.totalRuns = height(obj.brainReport)
             summary.numS1BeatsClassical = sum(obj.brainReport.S1_beatsClassical);
             summary.numS2BeatsClassical = sum(obj.brainReport.S2_beatsClassical);
             summary.numAnyBeatsClassical = sum(obj.brainReport.anyBeatsClassical);

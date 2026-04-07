@@ -41,6 +41,9 @@ function result = acquireRun(cfg,session)
             mkdir(runDir);
         end
 
+        % cause trigger
+        lecroy.trigger(cfg,session);
+
         % Read all requested channels using WFALL parser only
         channelData = struct();
         % parserFcn = str2func(cfg.transfer.parser.functionName);
@@ -141,12 +144,6 @@ function result = acquireRun(cfg,session)
 
 
 
-    if ~isempty(session)
-        try
-            clear session %#ok<NASGU>
-        catch
-        end
-    end
 end
 
 function validateConfig(cfg)
