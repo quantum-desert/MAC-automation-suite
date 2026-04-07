@@ -1,20 +1,13 @@
 function cfg = defaultConfig()
 % lecroy.defaultConfig  Default configuration for LeCroy acquisition package.
-%
-% This package targets Teledyne LeCroy MAUI oscilloscopes over a VISA
-% connection, with USBTMC as the default transport. The implementation is
-% intentionally conservative: it uses legacy SCPI/IEEE 488.2 style commands
-% plus INSPECT? queries so the acquired traces can be exported directly into
-% the two-column CSV format already consumed by the user's post-processing
-% code.
 
 cfg = struct();
 
 % ---- Connection ----
 cfg.connection = struct();
-cfg.connection.resource = "USB0::0x05FF::0x1023::4609N02990::0::INSTR"; % replace with scope VISA address
+cfg.connection.resource = "USB0::0x05FF::0x1023::4609N02990::0::INSTR";
 cfg.connection.transport = "USBTMC";
-cfg.connection.timeoutSeconds = 60;
+cfg.connection.timeoutSeconds = 120;   % larger default for WF? ALL
 cfg.connection.preferVisadev = true;
 cfg.connection.readTerminator = "LF";
 cfg.connection.writeTerminator = "LF";
@@ -30,27 +23,48 @@ cfg.acquisition.channelLabels = struct(...
     'C4', "S2_mod");
 cfg.acquisition.recordName = "scope";
 cfg.acquisition.runIndex = 0;
-cfg.acquisition.acquireMode = "single"; % currently only single is automated here
-cfg.acquisition.waitTimeoutSeconds = 30;
+cfg.acquisition.acquireMode = "single";
+cfg.acquisition.waitTimeoutSeconds = 60;
 cfg.acquisition.waitAfterIdleSeconds = 1.0;
 cfg.acquisition.stopBeforeSetup = true;
 cfg.acquisition.clearSweeps = false;
-cfg.acquisition.setCommHeaderOff = true;
+cfg.acquisition.setCommHeaderOff = false;   % leave header control to parser setup
 
-% Optional instrument commands executed before arming. These can be legacy
-% commands like C1:VDIV 200 mV or VBS wrappers like:
-%   "VBS 'app.acquisition.triggermode = \"stopped\" '"
+% Optional instrument setup before arming
 cfg.acquisition.setupCommands = strings(0,1);
 
-% Optional commands executed immediately after arming and before readback.
+% Optional commands executed immediately after arming and before readback
 cfg.acquisition.postArmCommands = strings(0,1);
 
 % ---- Transfer ----
 cfg.transfer = struct();
-cfg.transfer.dataQuery = "INSPECT"; % only INSPECT implemented here
-cfg.transfer.dataBlock = "DATA_ARRAY_1";
-cfg.transfer.dataType = "FLOAT"; % returns scaled volts/units
+
+% Switch acquisition package to waveform block mode
+cfg.transfer.mode = "WFALL";                 % new top-level selector
+cfg.transfer.dataQuery = "WF? ALL";          % parser will use this
 cfg.transfer.includeDescriptorSnapshot = true;
+
+% Parser file integration
+cfg.transfer.parser = struct();
+cfg.transfer.parser.functionName = "lecroy_waveform_all_parser";
+cfg.transfer.parser.acquireSingle = false;   % Brain/acquisition already handles arming
+cfg.transfer.parser.fallbackInspectTimeScale = true;
+cfg.transfer.parser.verbose = false;
+
+% Transfer formatting expected by parser
+cfg.transfer.parser.commHeader = "SHORT";    % CHDR SHORT
+cfg.transfer.parser.commFormat = "DEF9,WORD,BIN";   % CFMT DEF9,WORD,BIN
+cfg.transfer.parser.commOrder = "LO";        % CORD LO
+cfg.transfer.parser.waveformSetup = "SP,1,NP,0,FP,0,SN,0"; % WFSU ...
+
+% Timeout control
+cfg.transfer.parser.timeoutSeconds = 120;    % initial safe default
+cfg.transfer.parser.autoTimeout = true;
+cfg.transfer.parser.minTimeoutSeconds = 20;
+cfg.transfer.parser.assumedBytesPerSecond = 5e6;
+cfg.transfer.parser.timeoutMargin = 3.0;
+
+% Optional sanity-query metadata after waveform read
 cfg.transfer.queryVariables = [ ...
     "HORIZ_INTERVAL" ...
     "HORIZ_OFFSET" ...
@@ -82,13 +96,17 @@ cfg.storage.csvHeaderLines = [ ...
 cfg.storage.writeMat = true;
 cfg.storage.writeManifestJson = true;
 
+% Keep parser artifacts too
+cfg.storage.writeRawWaveformPayload = false;
+cfg.storage.writeParsedWaveformMat = true;
+
 % ---- Logging ----
 cfg.logging = struct();
 cfg.logging.verbose = true;
 
 % ---- Brain / sweep control ----
 cfg.brain = struct();
-cfg.brain.runDurationSeconds = 60*3600; % one hour
+cfg.brain.runDurationSeconds = 60*3600;
 cfg.brain.pauseBetweenRunsSeconds = 0;
 cfg.brain.processAfterAcquire = true;
 cfg.brain.stopOnError = true;
