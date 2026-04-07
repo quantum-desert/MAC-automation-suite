@@ -56,21 +56,26 @@ function result = acquireRun(cfg)
         end
 
         % Build storage paths
-        runIndex = cfg.acquisition.runIndex;
-        runDir = buildRunDir(cfg.storage, runIndex);
+        runDir = buildRunDir(cfg.storage, cfg.acquisition.runIndex);
         if ~exist(runDir, 'dir')
             mkdir(runDir);
+        else
+            % update run index folder if existing
+            cfg.acquisition.runIndex = cfg.acquisition.runIndex + 1;
+
         end
+        runIndex = cfg.acquisition.runIndex;
+
 
         % Read all requested channels using WFALL parser only
         channelData = struct();
-        parserFcn = str2func(cfg.transfer.parser.functionName);
+        % parserFcn = str2func(cfg.transfer.parser.functionName);
 
         for ch = cfg.acquisition.channels
             chanName = "C" + string(ch);
 
-            wf = lecroy_waveform( ...
-                session, chanName, ...
+            wf = lecroy.lecroy_waveform_all_parser( ...
+                session.io, chanName, ...
                 "AcquireSingle", cfg.transfer.parser.acquireSingle, ...
                 "TimeoutSeconds", cfg.transfer.parser.timeoutSeconds, ...
                 "CommFormat", cfg.transfer.parser.commFormat, ...
@@ -229,7 +234,7 @@ function waitForAcquisitionComplete(session, timeoutSeconds)
     io=session.io; % assign to actual object
 
     oldTimeout = io.Timeout;
-    c = onCleanup(@() setTimeout(io, oldTimeout));
+    c = onCleanup(@() setTimeout(session, oldTimeout));
     io.Timeout = timeoutSeconds;
 
     writeline(io, "*OPC?");
@@ -254,6 +259,18 @@ function runDir = buildRunDir(storageCfg, runIndex)
 
     runDirName = sprintf(char(storageCfg.runFolderPattern), runIndex);
     runDir = fullfile(rootDir, runDirName);
+end
+
+function dateDir = buildDateDir(storageCfg)
+    rootDir = storageCfg.rootDir;
+
+    if storageCfg.createDateFolder
+        % TODO add check if already exist
+        dateDir = char(datetime('today', 'Format', 'yyyy-MM-dd'));
+        rootDir = fullfile(rootDir, dateDir);
+    end
+
+    dateDir = rootDir;
 end
 
 function writeTwoColumnCsv(csvPath, t, y, headerLines)

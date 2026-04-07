@@ -56,11 +56,27 @@ function result = acquireRun(cfg)
         end
 
         % Build storage paths
-        runIndex = cfg.acquisition.runIndex;
-        runDir = buildRunDir(cfg.storage, runIndex);
+        runDir = buildRunDir(cfg.storage, cfg.acquisition.runIndex);
+
         if ~exist(runDir, 'dir')
             mkdir(runDir);
         end
+        % else
+        %     timeout=tic;
+        %     while(exist(runDir,'dir'))
+        %         % update run index folder until new # if existing
+        %         cfg.acquisition.runIndex = cfg.acquisition.runIndex + 1;
+        %         runDir = buildRunDir(cfg.storage, cfg.acquisition.runIndex);
+        %         mkdir(runDir);
+        % 
+        %         % prevent infinite
+        %         if toc(timeout) > 10
+        %             error('Timeout creating new run dir folder');
+        %         end
+        %     end
+        % end
+        runIndex = cfg.acquisition.runIndex;
+
 
         % Read all requested channels using WFALL parser only
         channelData = struct();
@@ -254,6 +270,18 @@ function runDir = buildRunDir(storageCfg, runIndex)
 
     runDirName = sprintf(char(storageCfg.runFolderPattern), runIndex);
     runDir = fullfile(rootDir, runDirName);
+end
+
+function dateDir = buildDateDir(storageCfg)
+    rootDir = storageCfg.rootDir;
+
+    if storageCfg.createDateFolder
+        % TODO add check if already exist
+        dateDir = char(datetime('today', 'Format', 'yyyy-MM-dd'));
+        rootDir = fullfile(rootDir, dateDir);
+    end
+
+    dateDir = rootDir;
 end
 
 function writeTwoColumnCsv(csvPath, t, y, headerLines)
