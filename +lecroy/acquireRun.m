@@ -184,15 +184,6 @@ function mustHave(s, fieldName)
 end
 
 
-
-
-
-
-
-
-
-
-
 function writeTwoColumnCsv(csvPath, t, y, headerLines)
     outDir = fileparts(csvPath);
     if ~isempty(outDir) && ~exist(outDir, 'dir')

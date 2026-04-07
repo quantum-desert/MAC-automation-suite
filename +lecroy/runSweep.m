@@ -1,5 +1,5 @@
-function history = runSweep(cfg)
+function history = runSweep(cfg,session)
 % lecroy.runSweep  Convenience wrapper around the Brain object.
-brain = lecroy.Brain(cfg);
+brain = skull.Brain(cfg,session);
 history = brain.run();
 end

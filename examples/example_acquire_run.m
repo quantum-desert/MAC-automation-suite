@@ -39,7 +39,7 @@ cfg.acquisition.setupCommands = [ ...
     "MSIZ 250K"
     ];
 
-% establish session
+% ---- establish session
 session = [];
 try
     session = lecroy.connect(cfg);

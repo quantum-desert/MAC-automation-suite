@@ -7,6 +7,7 @@ classdef Brain < handle
 
     properties
         cfg
+        session
         history
         startedAt
         finishedAt
@@ -14,9 +15,10 @@ classdef Brain < handle
     end
 
     methods
-        function obj = Brain(cfg)
+        function obj = Brain(cfg,session)
             obj.cfg = cfg;
-            obj.history = struct('runIndex', {}, 'runFolder', {}, 'acquisition', {}, 'processing', {}, 'error', {});
+            obj.session = session;
+            obj.history = struct('runIndex', {}, 'runDir', {}, 'acquisition', {}, 'processing', {}, 'error', {});
         end
 
         function history = run(obj)
@@ -30,21 +32,21 @@ classdef Brain < handle
 
                 entry = struct();
                 entry.runIndex = runIndex;
-                entry.runFolder = "";
+                entry.runDir = "";
                 entry.acquisition = [];
                 entry.processing = [];
                 entry.error = "";
 
                 try
-                    acq = lecroy.acquireRun(cfgIter);
+                    acq = lecroy.acquireRun(cfgIter,obj.session);
                     entry.acquisition = acq;
-                    entry.runFolder = string(acq.runFolder);
+                    entry.runDir = string(acq.runDir);
 
                     if isfield(cfgIter, 'postprocess') && cfgIter.brain.processAfterAcquire
                         ppCfg = cfgIter.postprocess;
                         ppCfg.runIndex = runIndex;
-                        ppCfg.runFolder = string(acq.runFolder);
-                        proc = postprocess.processRun(acq.runFolder, ppCfg);
+                        ppCfg.runDir = string(acq.runDir);
+                        proc = postprocess.processRun(acq.runDir, ppCfg);
                         entry.processing = proc;
                     end
                 catch ME
@@ -82,7 +84,7 @@ classdef Brain < handle
             summary.elapsedSeconds = obj.elapsedSeconds;
             summary.numRuns = numel(obj.history);
             summary.runIndices = arrayfun(@(x) x.runIndex, obj.history);
-            summary.runFolders = arrayfun(@(x) string(x.runFolder), obj.history, 'UniformOutput', false);
+            summary.runDirs = arrayfun(@(x) string(x.runDir), obj.history, 'UniformOutput', false);
 
             outDir = obj.cfg.storage.rootDir;
             if ~exist(outDir, 'dir')
