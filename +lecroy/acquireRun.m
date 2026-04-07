@@ -56,27 +56,12 @@ function result = acquireRun(cfg)
         end
 
         % Build storage paths
-        runDir = lecroy.buildRunDir(cfg.storage, cfg.acquisition.runIndex);
+        runIndex = cfg.acquisition.runIndex;
+        runDir = lecroy.buildRunDir(cfg.storage, runIndex);
 
         if ~exist(runDir, 'dir')
             mkdir(runDir);
         end
-        % else
-        %     timeout=tic;
-        %     while(exist(runDir,'dir'))
-        %         % update run index folder until new # if existing
-        %         cfg.acquisition.runIndex = cfg.acquisition.runIndex + 1;
-        %         runDir = buildRunDir(cfg.storage, cfg.acquisition.runIndex);
-        %         mkdir(runDir);
-        % 
-        %         % prevent infinite
-        %         if toc(timeout) > 10
-        %             error('Timeout creating new run dir folder');
-        %         end
-        %     end
-        % end
-        runIndex = cfg.acquisition.runIndex;
-
 
         % Read all requested channels using WFALL parser only
         channelData = struct();
