@@ -66,7 +66,7 @@ function out = lecroy_waveform_all_parser(io, chan, varargin)
     parse(p, varargin{:});
     opt = p.Results;
 
-    validateattributes(io, {'visadev'}, {}, mfilename, 'io', 1);
+    validateattributes(io, {'visalib.USB'}, {}, mfilename, 'io', 1);
 
     configureTerminator(io, "LF");
 
@@ -142,7 +142,7 @@ function acquireSingle(io, verbose)
             fprintf('*OPC? -> %s\n', ack);
         end
     catch ME
-        warning('Could not complete *OPC? wait: %s', ME.message);
+        warning(ME.iodentifier,'Could not complete *OPC? wait: %s', ME.message);
     end
 end
 

@@ -15,6 +15,7 @@ end
 cmd = sprintf('%s:INSPECT? "%s",%s', char(source), char(blockName), char(dataType));
 rsp = lecroy.query(session, cmd);
 
+
 % Strip everything before the first colon inside the quoted INSPECT payload.
 % Example response shape: C1:INSPECT "DATA_ARRAY_1: 1.0, 2.0, ..."
 payload = char(rsp);

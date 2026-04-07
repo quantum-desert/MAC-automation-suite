@@ -10,11 +10,12 @@ clear all;
 
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 
+
 cfg = lecroy.defaultConfig();
 cfg.storage.rootDir = fullfile(pwd, 'captures');
-cfg.acquisition.runIndex = 0;
+cfg = lecroy.updateConfig(cfg);
 
-% Example fixed setup commands. Replace with your experiment values.
+%  fixed setup commands
 cfg.acquisition.setupCommands = [ ...
     % "COMM_HEADER OFF" ...
     "TRMD STOP" ...
