@@ -25,12 +25,12 @@ if cfg.processing.makePlots
     postprocess.visualize_v2(tank_S2,cfg.constants);
 end
 
-phys1 = postprocess.build_physics(cfg.physics.file1,cfg.phys_constants,cfg.constants);
-phys2 = postprocess.build_physics(cfg.physics.file2,cfg.phys_constants,cfg.constants);
+phys1 = postprocess.build_physics(cfg.physics.S1,cfg.phys_constants,cfg.constants);
+phys2 = postprocess.build_physics(cfg.physics.S2,cfg.phys_constants,cfg.constants);
 summary = postprocess.displayReport(tank_S1, tank_S2, phys1, phys2);
 
 pp = struct();
-pp.runIndex = cfg.postprocess.runIndex;
+pp.runIndex = cfg.runIndex;
 pp.S1.SNRe = tank_S1.fit.SNRe;
 pp.S1.SNR_C = phys1.SNR_C;
 pp.S1.beatsClassical = tank_S1.fit.SNRe > phys1.SNR_C;
