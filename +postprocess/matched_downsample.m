@@ -67,6 +67,13 @@ for w=1:length(W)
     SNR(w) = (abs(mean(Xp)-mean(Xm)))^2/(4*std(Xp)^2);
 end
 
+    % figure; hold on;
+    % stem(SNR);
+    % xlabel('Start \phi');
+    % ylabel('SNR');
+    % title(strcat('Sampling \phi Optimization: ',tank_r.label));
+
+
 
 % extract best sampling phase
 [maxSNR,bestPhaseIdx] = max(SNR); %#ok<ASGLU>

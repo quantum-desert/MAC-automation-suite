@@ -40,15 +40,16 @@ end
 
 
 
-% Configure the sweep timer here.
-minutes=1;
+% Configure the sweep timer here
+hours=12;
+minutes=60*hours;
 cfg.brain.runDurationSeconds = floor(60*minutes);
 cfg.brain.pauseBetweenRunsSeconds = 1;
 cfg.brain.processAfterAcquire = true;
 
 % Keep the refactored post-processing behavior close to the original script.
 cfg.postprocess = postprocess.defaultConfig(cfg.storage.rootDir);
-cfg.postprocess.processing.makePlots = false;
+% cfg.postprocess.processing.makePlots = false;
 cfg.postprocess.processing.shorten = 1;
 
 history = lecroy.runSweep(cfg,session); %#ok<NASGU>
