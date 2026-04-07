@@ -95,6 +95,8 @@ cfg.storage.csvHeaderLines = [ ...
     ];
 cfg.storage.writeMat = true;
 cfg.storage.writeManifestJson = true;
+cfg.storage.writePrettyArtifacts = true;
+cfg.storage.writePrettyMat = false;
 
 % Keep parser artifacts too
 cfg.storage.writeRawWaveformPayload = false;
