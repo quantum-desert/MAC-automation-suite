@@ -50,6 +50,7 @@ result.tank_S2 = tank_S2;
 result.phys1 = phys1;
 result.phys2 = phys2;
 result.summary = summary;
+result.pp = pp;
 
 if cfg.processing.saveProcessedMat
     save(fullfile(runFolder, 'processed.mat'), 'result', '-v7.3');

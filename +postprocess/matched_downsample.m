@@ -62,10 +62,11 @@ for w=1:length(W)
             m_idx=m_idx+1;
         end
     end
-
+    
     % calculate SNR
     SNR(w) = (abs(mean(Xp)-mean(Xm)))^2/(4*std(Xp)^2);
 end
+
 
 % extract best sampling phase
 [maxSNR,bestPhaseIdx] = max(SNR); %#ok<ASGLU>
@@ -104,17 +105,19 @@ end
 tank_r.fit.SNRe = (abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm)))^2/(4*std(tank_r.fit.Xp)^2);
 
 % define fixed bin width
-bw=1e-4;
+bw=1e-5;
 
  % plus ()
+ 
 [counts_p, edges_p] = histcounts(tank_r.fit.Xp,'BinWidth',bw);
 binCenters_p = (edges_p(1:end-1) + edges_p(2:end)) / 2;
-[tank_r.fit.f_p, ~] = fit(binCenters_p.', counts_p.', 'gauss1');
+[tank_r.fit.f_p, ~] = fit(binCenters_p', counts_p', 'gauss1');
 
 % minus ()
 [counts_m, edges_m] = histcounts(tank_r.fit.Xm,'BinWidth',bw);
 binCenters_m = (edges_m(1:end-1) + edges_m(2:end)) / 2;
 [tank_r.fit.f_m, ~] = fit(binCenters_m', counts_m', 'gauss1');
+
 
 % store some parameters
 tank_r.report.ds_len = length(tank_r.dsA);

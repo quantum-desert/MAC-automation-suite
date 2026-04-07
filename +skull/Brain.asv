@@ -13,7 +13,6 @@ classdef Brain < handle
         finishedAt
         elapsedSeconds double = 0
         brainReport
-        sweepSummary
     end
 
     methods
@@ -22,7 +21,6 @@ classdef Brain < handle
             obj.session = session;
             obj.history = struct('runIndex', {}, 'runDir', {}, 'acquisition', {}, 'processing', {}, 'error', {});
             obj.brainReport = table();
-            obj.sweepSummary = table();
         end
 
         function history = run(obj)
@@ -72,9 +70,17 @@ classdef Brain < handle
             end
 
             % scoreboard
-            if obj.cfg.brain.processAfterAcquire
-                obj = obj.recordPostprocess(acq, entry.processing);
-            end
+            obj.brainReport.rows(end+1) = struct( ...
+            'runIndex', runIdx, ...
+            'runDir', result.runDir, ...
+            'S1_SNRe', pp.S1.SNRe, ...
+            'S1_SNR_C', pp.S1.SNR_C, ...
+            'S1_beatsClassical', pp.S1.beatsClassical, ...
+            'S2_SNRe', pp.S2.SNRe, ...
+            'S2_SNR_C', pp.S2.SNR_C, ...
+            'S2_beatsClassical', pp.S2.beatsClassical, ...
+            'anyBeatsClassical', pp.anyBeatsClassical, ...
+            'bothBeatClassical', pp.bothBeatClassical);
 
             obj.finishedAt = datetime('now');
             obj.elapsedSeconds = toc(t0);
