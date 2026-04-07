@@ -242,6 +242,6 @@ end
 function printIfPresent(fid, label, s, fieldName, fmt)
     if isfield(s, fieldName) && ~isempty(s.(fieldName))
         fprintf(fid, "%-16s: ", label);
-        fprintf(fid, [fmt newline], s.(fieldName));
+        fprintf(fid, strcat(fmt, newline), s.(fieldName));
     end
 end

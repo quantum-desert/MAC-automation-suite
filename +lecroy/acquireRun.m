@@ -18,14 +18,15 @@ function result = acquireRun(cfg,session)
 
     arguments
         cfg struct
+        session struct
     end
 
     validateConfig(cfg);
 
     
 
-        % Optional post-arm commands
-        runCommandList(session, cfg.acquisition.postArmCommands);
+        % % Optional post-arm commands
+        % runCommandList(session, cfg.acquisition.postArmCommands);
 
         % Extra settle time if desired
         if isfield(cfg.acquisition, "waitAfterIdleSeconds") && cfg.acquisition.waitAfterIdleSeconds > 0
@@ -138,15 +139,7 @@ function result = acquireRun(cfg,session)
             fprintf('Acquisition complete. Run folder: %s\n', runDir);
         end
 
-    catch ME
-        if ~isempty(session)
-            try
-                clear session %#ok<NASGU>
-            catch
-            end
-        end
-        rethrow(ME);
-    end
+
 
     if ~isempty(session)
         try
@@ -190,43 +183,12 @@ function mustHave(s, fieldName)
     end
 end
 
-function runCommandList(session, cmds)
-    if isempty(cmds)
-        return;
-    end
-    cmds = string(cmds(:));
-    for k = 1:numel(cmds)
-        cmd = strtrim(cmds(k));
-        if strlength(cmd) == 0
-            continue;
-        end
-        lecroy.tryWriteLine(session, cmd);
-    end
-end
 
 
-function waitForAcquisitionComplete(session, timeoutSeconds)
-    if nargin < 2 || isempty(timeoutSeconds)
-        timeoutSeconds = 30;
-    end
 
-    io=session.io; % assign to actual object
 
-    oldTimeout = io.Timeout;
-    c = onCleanup(@() setTimeout(session, oldTimeout));
-    io.Timeout = timeoutSeconds;
 
-    writeline(io, "*OPC?");
-    resp = strtrim(readline(io)); %#ok<NASGU>
-end
 
-function setTimeout(session, val)
-    io=session.io;
-    try
-        io.Timeout = val;
-    catch
-    end
-end
 
 
 
