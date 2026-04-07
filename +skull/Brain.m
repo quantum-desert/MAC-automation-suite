@@ -15,7 +15,28 @@ classdef Brain < handle
         brainReport
         sweepSummary
     end
-
+    methods (Static)
+        function rows = tableToStructArray(T)
+            % Convert table rows to JSON-friendly struct array.
+    
+            if isempty(T)
+                rows = struct([]);
+                return;
+            end
+    
+            rows = table2struct(T);
+    
+            for i = 1:numel(rows)
+                f = fieldnames(rows(i));
+                for k = 1:numel(f)
+                    val = rows(i).(f{k});
+                    if isstring(val) && isscalar(val)
+                        rows(i).(f{k}) = char(val);
+                    end
+                end
+            end
+        end
+    end
     methods
         function obj = Brain(cfg,session)
             obj.cfg = cfg;
@@ -114,7 +135,7 @@ classdef Brain < handle
         %   pp   - postprocess result struct with pp.summary fields
         %
         % REQUIRED pp.summary FIELDS
-        %   S1_SNRe, S1_SNR_C, S2_SNRe, S2_SNR_C
+        %   S1.SNRe, S1.SNR_C, S2.SNRe, S2.SNR_C
         %
         % EFFECTS
         %   - updates obj.brainReport
@@ -136,14 +157,18 @@ classdef Brain < handle
             end
         
             s = pp.summary;
-            required = {'S1_SNRe','S1_SNR_C','S2_SNRe','S2_SNR_C'};
+            required = {'S1.SNRe','S1.SNR_C','S2.SNRe','S2.SNR_C'};
             for k = 1:numel(required)
-                if ~isfield(s, required{k})
-                    error('Brain:recordPostprocess:MissingSummaryField', ...
-                        'pp.summary is missing required field: %s', required{k});
+                parts = strsplit(required{k}, '.');
+                node  = s;
+                for p = 1:numel(parts)
+                    if ~isstruct(node) || ~isfield(node, parts{p})
+                        error('Brain:recordPostprocess:MissingSummaryField', ...
+                            'pp.summary is missing required field: %s', required{k});
+                    end
+                    node = node.(parts{p});  % dynamic field access, walk deeper
                 end
             end
-        
             % ------------------------------------------------------------
             % Extract run metadata
             % ------------------------------------------------------------
@@ -167,8 +192,8 @@ classdef Brain < handle
             % ------------------------------------------------------------
             % Compute comparisons
             % ------------------------------------------------------------
-            S1_margin = s.S1_SNRe - s.S1_SNR_C;
-            S2_margin = s.S2_SNRe - s.S2_SNR_C;
+            S1_margin = s.S1.SNRe - s.S1.SNR_C;
+            S2_margin = s.S2.SNRe - s.S2.SNR_C;
         
             S1_beatsClassical = S1_margin > 0;
             S2_beatsClassical = S2_margin > 0;
@@ -198,12 +223,12 @@ classdef Brain < handle
                 runIndex, ...
                 timestampUtc, ...
                 runDir, ...
-                s.S1_SNRe, ...
-                s.S1_SNR_C, ...
+                s.S1.SNRe, ...
+                s.S1.SNR_C, ...
                 S1_margin, ...
                 S1_beatsClassical, ...
-                s.S2_SNRe, ...
-                s.S2_SNR_C, ...
+                s.S2.SNRe, ...
+                s.S2.SNR_C, ...
                 S2_margin, ...
                 S2_beatsClassical, ...
                 anyBeatsClassical, ...
@@ -213,12 +238,12 @@ classdef Brain < handle
                     'runIndex', ...
                     'timestampUtc', ...
                     'runDir', ...
-                    'S1_SNRe', ...
-                    'S1_SNR_C', ...
+                    'S1.SNRe', ...
+                    'S1.SNR_C', ...
                     'S1_margin', ...
                     'S1_beatsClassical', ...
-                    'S2_SNRe', ...
-                    'S2_SNR_C', ...
+                    'S2.SNRe', ...
+                    'S2.SNR_C', ...
                     'S2_margin', ...
                     'S2_beatsClassical', ...
                     'anyBeatsClassical', ...
@@ -312,7 +337,7 @@ classdef Brain < handle
             jsonPath = fullfile(rootDir, 'sweep_tracking.json');
             jsonStruct = struct();
             jsonStruct.summary = S;
-            jsonStruct.rows = tableToStructArray(T);
+            jsonStruct.rows = skull.Brain.tableToStructArray(T);
         
             fid = fopen(jsonPath, 'w');
             assert(fid >= 0, 'Could not open JSON file for writing: %s', jsonPath);
@@ -351,26 +376,6 @@ classdef Brain < handle
             end
         end
 
-        function rows = tableToStructArray(T)
-        % Convert table rows to JSON-friendly struct array.
-        
-            if isempty(T)
-                rows = struct([]);
-                return;
-            end
-        
-            rows = table2struct(T);
-        
-            % Ensure strings remain JSON-friendly
-            for i = 1:numel(rows)
-                f = fieldnames(rows(i));
-                for k = 1:numel(f)
-                    val = rows(i).(f{k});
-                    if isstring(val) && isscalar(val)
-                        rows(i).(f{k}) = char(val);
-                    end
-                end
-            end
-        end
+
     end
 end
