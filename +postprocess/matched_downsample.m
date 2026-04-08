@@ -111,6 +111,9 @@ end
 % store best SNR
 tank_r.fit.SNRe = (abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm)))^2/(4*std(tank_r.fit.Xp)^2);
 
+% define frequency domain SNR
+tank_r.fit.SNRf = tank_r.fit.SNRe*sqrt(constants.BW_t/constants.RBW); % (predicted) frequency domain SNR
+
 % define fixed bin width
 bw=1e-5;
 

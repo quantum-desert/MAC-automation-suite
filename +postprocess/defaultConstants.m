@@ -3,7 +3,7 @@ function constants = defaultConstants()
 
 constants = struct;
 % constants.Rb = 8e3; % bit rate (Hz) PN15
-constants.Rb = 16e3; % bit rate (Hz), used for determinstic mod
+constants.Rb = 16e3; % bit rate (Hz), used for determinstic mod (or PN15)
 constants.fd = 32e3; % dither frequency (Hz)
 constants.filtering = 1; % filter flag
 constants.S = 1.23; % PD responsivity
@@ -12,4 +12,6 @@ constants.orange = "#ffb14e";
 constants.purple = "#9d02d7";
 constants.blue = "#3449eb";
 constants.pink = "#eb348f";
+constants.BW_t = 1e6; % Hz
+constants.RBW=7.813; % Hz
 end

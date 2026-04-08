@@ -41,6 +41,9 @@ cfg.physics.S2 = struct( ...
     'P_b', 4342e-6, ...
     'comments', "Channel 2 physics package");
 
+
+
+
 cfg.channels = struct();
 cfg.channels.S1 = struct('label', "S1", 'homodyneChannel', 2, 'modChannel', 1);
 cfg.channels.S2 = struct('label', "S2", 'homodyneChannel', 3, 'modChannel', 4);
