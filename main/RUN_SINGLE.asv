@@ -52,7 +52,5 @@ cfg.postprocess.processing.shorten = 1;
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 
-% indicate finish
-% load gong;
-% sound(y,Fs);
+l
 

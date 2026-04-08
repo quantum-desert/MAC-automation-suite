@@ -125,6 +125,11 @@ for t=1:length(tank_r.dsA)-1
     end
 end
 
+disp(strcat('Xp mean: ',num2str(mean(tank_r.fit.Xp))));
+disp(strcat('Xm mean: ',num2str(mean(tank_r.fit.Xm))));
+disp(strcat('Separation^2: ',num2str(abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm))^2)));
+disp(strcat('Xp Variance: ',num2str(std(tank_r.fit.Xp)^2)));
+
 % store best SNR
 tank_r.fit.SNRe = (abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm)))^2/(4*std(tank_r.fit.Xp)^2);
 

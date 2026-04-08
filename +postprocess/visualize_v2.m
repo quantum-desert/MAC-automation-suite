@@ -7,7 +7,7 @@ function visualize_v2(tank,constants) %#ok<INUSD>
 
 % TIME DOMAIN PLOT
 figure; hold on;
-lim=floor(length(tank.t_homo)*3/4)
+lim=1e3;
 lim_ds = floor(lim/tank.report.M);
 plot(tank.t_homo(1:lim),tank.A_homo(1:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
 plot(tank.t_homo(1:lim),tank.A_homo_filt(1:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
