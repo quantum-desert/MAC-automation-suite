@@ -6,8 +6,12 @@ tank_r = tank;
 
 if(deterministic)
 % apply low pass filter
-[b,a] = butter(3, constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
+[b,a] = butter(3, 0.6*constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
 tank_r.A_homo_filt = filter(b,a,tank_r.A_homo);
+
+% % apply high pass
+% [b,a] = butter(3, 3e3/tank.report.Fn,'high');     % 3rd order high-pass
+% tank_r.A_homo_filt = filter(b,a,tank_r.A_homo_filt);
 
 else
 % apply boxcar filter -> spectrally matched filter

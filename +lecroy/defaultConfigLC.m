@@ -1,4 +1,4 @@
-function cfg = defaultConfig()
+function cfg = defaultConfigLC()
 % lecroy.defaultConfig  Default configuration for LeCroy acquisition package.
 
 cfg = struct();
@@ -140,7 +140,7 @@ cfg.brain.stopOnError = true;
 cfg.brain.saveSweepSummary = true;
 
 % ---- Post-processing ----
-cfg.postprocess = postprocess.defaultConfig(cfg.storage.rootDir);
+cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 cfg.postprocess.runIndex = cfg.acquisition.runIndex;
 
 end

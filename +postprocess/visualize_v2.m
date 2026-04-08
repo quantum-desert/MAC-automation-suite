@@ -23,31 +23,31 @@ legend;
 
 % histograms
 % plot gaussian fits and data
-% figure; hold on;
-% n=150;
-% hp=histogram(tank.fit.Xp,'NumBins',n/2,'DisplayName','X^+');
-% hm=histogram(tank.fit.Xm,'NumBins',n/2,'DisplayName','X^-');
-% 
-% % plot fits
-% hpf = plot(tank.fit.f_p);
-% hpf.YData = hpf.YData*max(hp.Values)/max(hpf.YData);
-% hpf.LineWidth = 2; hpf.Color = constants.purple;
-% 
-% hmf = plot(tank.fit.f_m);
-% hmf.YData = hmf.YData*max(hm.Values)/max(hmf.YData);
-% hmf.LineWidth = 2; hmf.Color = constants.orange;
-% 
-% xline(mean(tank.fit.Xp),'DisplayName','\mu^+')
-% xline(mean(tank.fit.Xm),'DisplayName','\mu^-')
-% 
-% legend;
-% title(strcat('Histogram + Fits: ',tank.label));
-% 
-% % styling
-% set(hp,'FaceColor',constants.purple);
-% set(hp,'FaceAlpha',1);
-% set(hm,'FaceColor',constants.orange);
-% set(hm,'FaceAlpha',.6);
+figure; hold on;
+n=150;
+hp=histogram(tank.fit.Xp,'NumBins',n/2,'DisplayName','X^+');
+hm=histogram(tank.fit.Xm,'NumBins',n/2,'DisplayName','X^-');
+
+% plot fits
+hpf = plot(tank.fit.f_p);
+hpf.YData = hpf.YData*max(hp.Values)/max(hpf.YData);
+hpf.LineWidth = 2; hpf.Color = constants.purple;
+
+hmf = plot(tank.fit.f_m);
+hmf.YData = hmf.YData*max(hm.Values)/max(hmf.YData);
+hmf.LineWidth = 2; hmf.Color = constants.orange;
+
+xline(mean(tank.fit.Xp),'DisplayName','\mu^+')
+xline(mean(tank.fit.Xm),'DisplayName','\mu^-')
+
+legend;
+title(strcat('Histogram + Fits: ',tank.label));
+
+% styling
+set(hp,'FaceColor',constants.purple);
+set(hp,'FaceAlpha',1);
+set(hm,'FaceColor',constants.orange);
+set(hm,'FaceAlpha',.6);
 
 
 % FREQUENCY DOMAIN PLOT

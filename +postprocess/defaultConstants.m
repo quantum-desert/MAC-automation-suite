@@ -12,6 +12,6 @@ constants.orange = "#ffb14e";
 constants.purple = "#9d02d7";
 constants.blue = "#3449eb";
 constants.pink = "#eb348f";
-constants.BW_t = (8e3-3e3); % Hz
+constants.BW_t = 9.6e3; % Hz
 constants.RBW=7.813; % Hz
 end

@@ -4,7 +4,7 @@ clear all;
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 
 
-cfg = lecroy.defaultConfig();
+cfg = lecroy.defaultConfigLC();
 cfg.storage.rootDir = fullfile(pwd, 'captures');
 cfg = lecroy.updateConfig(cfg);
 
@@ -48,7 +48,7 @@ cfg.brain.pauseBetweenRunsSeconds = 1;
 cfg.brain.processAfterAcquire = true;
 
 % Keep the refactored post-processing behavior close to the original script.
-cfg.postprocess = postprocess.defaultConfig(cfg.storage.rootDir);
+cfg.postprocess = postprocess.defaultConfiPPg(cfg.storage.rootDir);
 % cfg.postprocess.processing.makePlots = false;
 cfg.postprocess.processing.shorten = 1;
 
