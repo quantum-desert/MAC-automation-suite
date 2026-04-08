@@ -55,4 +55,5 @@ history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 % indicate finish
 % load gong;
 % sound(y,Fs);
+system('powershell -c (New-Object Media.SoundPlayer ''C:\Windows\Media\notify.wav'').PlaySync()');
 
