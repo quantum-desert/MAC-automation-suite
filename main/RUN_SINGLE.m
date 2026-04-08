@@ -45,7 +45,9 @@ cfg.brain.processAfterAcquire = true;
 
 % Keep the refactored post-processing behavior close to the original script.
 cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
-% cfg.postprocess.processing.makePlots = false;
+
+% control plot output
+cfg.postprocess.processing.makePlots = true;
 cfg.postprocess.processing.shorten = 1;
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>

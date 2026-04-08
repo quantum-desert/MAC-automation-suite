@@ -7,7 +7,7 @@ function visualize_v2(tank,constants) %#ok<INUSD>
 
 % TIME DOMAIN PLOT
 figure; hold on;
-lim=1e3;
+lim=floor(length(tank.t_homo)*3/4)
 lim_ds = floor(lim/tank.report.M);
 plot(tank.t_homo(1:lim),tank.A_homo(1:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
 plot(tank.t_homo(1:lim),tank.A_homo_filt(1:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
@@ -54,34 +54,91 @@ set(hm,'FaceAlpha',.6);
 plot_ft(tank.report.Fs, tank.A_mod, tank.A_homo, tank.A_homo_filt,tank.label);
 
 end
+function r = fft_calc(x, fs,SNR)
+    N = length(x);
+    X = fft(x);
 
-function r = fft_calc(x,fs)
-    % Compute FFT
-    N = length(x);             % Number of samples
-    X = fft(x);                % Perform FFT
-    % Magnitude (two-sided), then convert to single-sided
-    P2 = abs(X)/N;
+    % Single-sided amplitude spectrum
+    P2 = abs(X) / N;
     P1 = P2(1:floor(N/2)+1);
-    if mod(N,2)==0
-        P1(2:end-1) = 2*P1(2:end-1); % even N: double interior bins
+    if mod(N,2) == 0
+        P1(2:end-1) = 2 * P1(2:end-1);
     else
-        P1(2:end)   = 2*P1(2:end);   % odd N
+        P1(2:end) = 2 * P1(2:end);
     end
 
-    % Frequency axis (Hz)
-    f = fs*(0:floor(N/2))/N;
-    r=[f'./1e3,log(P1)];
+    f = fs * (0:floor(N/2)) / N;
+    df = f(2) - f(1);  % Hz per bin
 
-    
+    if(SNR)
+    % --- SNR Estimation ---
+    bw_hz       = 8;                          % desired bandwidth (Hz)
+    half_bw     = bw_hz / 2;
+    guard_hz    = bw_hz;                      % guard band around peak (exclude from noise)
 
+    % Power spectrum (amplitude^2)
+    P1_pwr = P1 .^ 2;
+
+    % 1) Find peak within the BW window
+    [~, peak_idx] = max(P1_pwr);
+    f_peak = f(peak_idx);
+
+    % 2) Bins inside the signal BW
+    sig_mask = (f >= f_peak - half_bw) & (f <= f_peak + half_bw);
+
+    % 3) Noise bins: within a wider window but outside the guard band
+    noise_window_hz = 5 * bw_hz;             % look ±5x BW around peak for noise
+    noise_mask = (f >= f_peak - noise_window_hz) & ...
+                 (f <= f_peak + noise_window_hz) & ...
+                 ~((f >= f_peak - guard_hz) & (f <= f_peak + guard_hz));
+
+    % 4) Signal power = sum of bins in BW
+    P_signal = sum(P1_pwr(sig_mask));
+
+    % 5) Noise floor: mean power per bin × number of signal bins
+    %    (normalises noise to the same BW as the signal)
+    n_sig_bins   = sum(sig_mask);
+    P_noise_per_bin = median(P1_pwr(noise_mask));    P_noise      = P_noise_per_bin * n_sig_bins;
+
+    % 6) SNR in dB
+    SNR_dB_vrms = 10 * log10(P_signal / P_noise);
+
+    fprintf('Frequency resolution : %.4f Hz/bin\n', df);
+    fprintf('Peak frequency       : %.4f Hz\n',     f_peak);
+    fprintf('Signal BW            : %.1f Hz (%d bins)\n', bw_hz, n_sig_bins);
+    % fprintf('SNR                  : %.2f dB\n',     SNR_dB);
+    fprintf('SNR                  : %.2f (linear v_rms)\n', sqrt(P_signal / P_noise));
+    end
+    % Original output (keep your log-magnitude for plotting)
+    r = [f' / 1e3, log(P1)];
 end
+% function r = fft_calc(x,fs)
+%     % Compute FFT
+%     N = length(x);             % Number of samples
+%     X = fft(x);                % Perform FFT
+%     % Magnitude (two-sided), then convert to single-sided
+%     P2 = abs(X)/N;
+%     P1 = P2(1:floor(N/2)+1);
+%     if mod(N,2)==0
+%         P1(2:end-1) = 2*P1(2:end-1); % even N: double interior bins
+%     else
+%         P1(2:end)   = 2*P1(2:end);   % odd N
+%     end
+% 
+%     % Frequency axis (Hz)
+%     f = fs*(0:floor(N/2))/N;
+%     r=[f'./1e3,log(P1)];
+% 
+% 
+% 
+% end
 
 
 function r = plot_ft(Fs,A_mod,A_S,A_S_filt,tle)
     % plotting FFT of actual signals
-    ft_mod=fft_calc(A_mod,Fs);
-    ft_analog=fft_calc(A_S,Fs);
-    ft_filtered=fft_calc(A_S_filt,Fs);
+    ft_mod=fft_calc(A_mod,Fs,false);
+    ft_analog=fft_calc(A_S,Fs,false);
+    ft_filtered=fft_calc(A_S_filt,Fs,true);
     
     figure; hold on;
     % plot mod FFT
