@@ -104,6 +104,56 @@ classdef Brain < handle
             history = obj.history;
         end
 
+        function history = runSingle(obj)
+
+            runIndex = 1; % only
+            
+            cfgIter = obj.cfg;
+            cfgIter.acquisition.runIndex = runIndex;
+
+            entry = struct();
+            entry.runIndex = runIndex;
+            entry.runDir = "";
+            entry.acquisition = [];
+            entry.processing = [];
+            entry.error = "";
+
+            try
+                acq = lecroy.acquireRun(cfgIter,obj.session);
+                entry.acquisition = acq;
+                entry.runDir = string(acq.runDir);
+
+                if isfield(cfgIter, 'postprocess') && cfgIter.brain.processAfterAcquire
+                    ppCfg = cfgIter.postprocess;
+                    ppCfg.runIndex = runIndex;
+                    ppCfg.runDir = string(acq.runDir);
+                    proc = postprocess.processRun(acq.runDir, ppCfg);
+                    entry.processing = proc;
+                end
+            catch ME
+                entry.error = string(getReport(ME, 'extended', 'hyperlinks', 'off'));
+                obj.history(end+1) = entry; %#ok<AGROW>
+                if obj.cfg.brain.stopOnError
+                    rethrow(ME);
+                end
+            end
+
+            if isempty(entry.error)
+                obj.history(end+1) = entry; %#ok<AGROW>
+            end
+
+
+            % scoreboard
+            if obj.cfg.brain.processAfterAcquire
+                obj = obj.recordPostprocess(acq, entry.processing);
+            end
+
+            if obj.cfg.brain.pauseBetweenRunsSeconds > 0
+                pause(obj.cfg.brain.pauseBetweenRunsSeconds);
+            end
+            history = obj.history;
+        end
+
         function writeSweepSummary(obj)
             if ~obj.cfg.brain.saveSweepSummary
                 return;

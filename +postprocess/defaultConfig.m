@@ -15,9 +15,10 @@ cfg.phys_constants = postprocess.defaultPhysConstants();
 
 cfg.processing = struct();
 cfg.processing.shorten = 1;
-cfg.processing.makePlots = 0;
+cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
+cfg.processing.deterministic = true;
 
 cfg.physics = struct();
 

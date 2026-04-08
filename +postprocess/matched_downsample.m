@@ -1,12 +1,19 @@
-function tank_r = matched_downsample(constants,tank)
+function tank_r = matched_downsample(constants,tank,deterministic)
 % ---- apply matched filter
 
 % assign local
 tank_r = tank;
 
+if(deterministic)
+% apply low pass filter
+[b,a] = butter(3, constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
+tank_r.A_homo_filt = filter(b,a,tank_r.A_homo);
+
+else
 % apply boxcar filter -> spectrally matched filter
 haf=ones(1, tank_r.report.M) / (tank_r.report.M);     % moving avg. boxcar filter
 tank_r.A_homo_filt = filter(haf,1,tank_r.A_homo); % apply filter
+end
 
 % truncate to account for phase delay from filter
 lag=floor(tank_r.report.M/2);
@@ -67,11 +74,11 @@ for w=1:length(W)
     SNR(w) = (abs(mean(Xp)-mean(Xm)))^2/(4*std(Xp)^2);
 end
 
-    % figure; hold on;
-    % stem(SNR);
-    % xlabel('Start \phi');
-    % ylabel('SNR');
-    % title(strcat('Sampling \phi Optimization: ',tank_r.label));
+figure; hold on;
+stem(SNR);
+xlabel('Start \phi');
+ylabel('SNR');
+title(strcat('Sampling \phi Optimization: ',tank_r.label));
 
 
 
