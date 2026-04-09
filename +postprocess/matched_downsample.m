@@ -6,12 +6,17 @@ tank_r = tank;
 
 if(deterministic)
 
-% % try subtract ma
-% tank_r.A_homo = tank_r.A_homo - movmean(tank_r.A_homo,tank_r.report.M);
+% try subtract ma
+tank_r.A_homo = tank_r.A_homo - movmean(tank_r.A_homo,2*tank_r.report.M);
+
+% % apply low pass filter
+% [b,a] = butter(3, 1*constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
+% tank_r.A_homo_filt = filter(b,a,tank_r.A_homo);
 
 % apply low pass filter
-[b,a] = butter(3, 1*constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
-tank_r.A_homo_filt = filter(b,a,tank_r.A_homo);
+[b,a] = butter(5, 0.6*constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
+tank_r.A_homo_filt = filtfilt(b,a,tank_r.A_homo);
+
 
 
 
@@ -26,9 +31,12 @@ tank_r.A_homo_filt = filter(haf,1,tank_r.A_homo); % apply filter
 end
 
 % truncate to account for phase delay from filter
-lag=floor(tank_r.report.M/2);
-tank_r.A_homo_filt = tank_r.A_homo_filt(1+lag:end);
-tank_r.A_mod_d = tank_r.A_mod_d(1:end-lag);
+if(~deterministic)
+    lag=floor(tank_r.report.M/2);
+    tank_r.A_homo_filt = tank_r.A_homo_filt(1+lag:end);
+    tank_r.A_mod_d = tank_r.A_mod_d(1:end-lag);
+end
+
 % TODO: do we need to optimize lag first?
 
 % downsample
