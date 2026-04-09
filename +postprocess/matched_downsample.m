@@ -50,8 +50,8 @@ SNR = zeros(size(W));
 % sample_index_arr = floor(tank_r.report.M/2):tank_r.report.M:end_idx;
 sample_index_arr = floor(tank_r.report.M/2):tank_r.report.M:end_idx;
 
-% downsample digital mod
-tank_r.ds_mod_A = tank_r.A_mod_d(sample_index_arr);
+% % downsample digital mod
+% tank_r.ds_mod_A = tank_r.A_mod_d(sample_index_arr);
 
 % TODO: find first rising edge and downsample there
 
@@ -64,6 +64,10 @@ for w=1:length(W)
 
     % downsample (amplitude)
     tank_r.dsA = tank_r.A_homo_filt(sample_index_arr);
+
+    % downsample digital mod
+    tank_r.ds_mod_A = tank_r.A_mod_d(sample_index_arr);
+
 
     % distribute according to gt
     p_idx=1; m_idx=1;
