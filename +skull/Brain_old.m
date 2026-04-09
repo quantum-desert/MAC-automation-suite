@@ -37,19 +37,69 @@ classdef Brain < handle
             end
         end
 
-        
+        function writeSweepTrackingFilesAtomic(obj)
+            % Write rolling sweep tracking artifacts to disk after every run.
+            % Uses temp-file + replace semantics so files stay valid if MATLAB crashes.
+            
+                if ~isprop(obj, 'cfg') || ~isfield(obj.cfg, 'storage') || ~isfield(obj.cfg.storage, 'rootDir')
+                    warning('Brain:writeSweepTrackingFilesAtomic:MissingRootDir', ...
+                        'cfg.storage.rootDir is missing. Sweep summary not written.');
+                    return;
+                end
+            
+                rootDir = string(obj.cfg.storage.rootDir);
+                if strlength(rootDir) == 0
+                    warning('Brain:writeSweepTrackingFilesAtomic:EmptyRootDir', ...
+                        'cfg.storage.rootDir is empty. Sweep summary not written.');
+                    return;
+                end
+            
+                if ~exist(rootDir, 'dir')
+                    mkdir(rootDir);
+                end
+            
+                % Optional dedicated sweep folder
+                sweepDir = fullfile(rootDir, 'sweep_state');
+                if ~exist(sweepDir, 'dir')
+                    mkdir(sweepDir);
+                end
+            
+                T = obj.sweepTable;
+                S = obj.sweepSummary;
+            
+                % ---- CSV ----
+                csvPath = fullfile(sweepDir, 'sweep_tracking.csv');
+                writeTableAtomic(csvPath, T);
+            
+                % ---- MAT ----
+                matPath = fullfile(sweepDir, 'sweep_tracking.mat');
+                writeMatAtomic(matPath, T, S);
+            
+                % ---- JSON ----
+                jsonPath = fullfile(sweepDir, 'sweep_tracking.json');
+                jsonStruct = struct();
+                jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', ...
+                    'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
+                jsonStruct.summary = S;
+                jsonStruct.rows = tableToStructArray(T);
+                writeJsonAtomic(jsonPath, jsonStruct);
+            
+                % ---- TXT flagged report ----
+                txtPath = fullfile(sweepDir, 'sweep_flagged_runs.txt');
+                writeFlaggedTxtAtomic(txtPath, T, S);
+        end
         function writeTableAtomic(finalPath, T)
             tmpPath = finalPath + ".tmp";
             writetable(T, tmpPath, 'FileType', 'text');
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
 
         function writeMatAtomic(finalPath, T, S)
             tmpPath = finalPath + ".tmp";
-            brainReport = T; %#ok<NASGU>
+            sweepTable = T; %#ok<NASGU>
             sweepSummary = S; %#ok<NASGU>
-            save(tmpPath, 'brainReport', 'sweepSummary', '-v7.3');
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            save(tmpPath, 'sweepTable', 'sweepSummary', '-v7.3');
+            replaceFileAtomic(tmpPath, finalPath);
         end
     
         function writeJsonAtomic(finalPath, s)
@@ -62,7 +112,7 @@ classdef Brain < handle
             fprintf(fid, '%s', txt);
             fclose(fid);
         
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
     
         function writeFlaggedTxtAtomic(finalPath, T, S)
@@ -101,7 +151,7 @@ classdef Brain < handle
         
             fclose(fid);
         
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
 
     function replaceFileAtomic(tmpPath, finalPath)
@@ -186,58 +236,6 @@ classdef Brain < handle
             obj.elapsedSeconds = toc(t0);
             obj.writeSweepSummary();
             history = obj.history;
-        end
-
-        function writeSweepTrackingFilesAtomic(obj)
-            % Write rolling sweep tracking artifacts to disk after every run.
-            % Uses temp-file + replace semantics so files stay valid if MATLAB crashes.
-            
-                if ~isprop(obj, 'cfg') || ~isfield(obj.cfg, 'storage') || ~isfield(obj.cfg.storage, 'rootDir')
-                    warning('Brain:writeSweepTrackingFilesAtomic:MissingRootDir', ...
-                        'cfg.storage.rootDir is missing. Sweep summary not written.');
-                    return;
-                end
-            
-                rootDir = string(obj.cfg.storage.rootDir);
-                if strlength(rootDir) == 0
-                    warning('Brain:writeSweepTrackingFilesAtomic:EmptyRootDir', ...
-                        'cfg.storage.rootDir is empty. Sweep summary not written.');
-                    return;
-                end
-            
-                if ~exist(rootDir, 'dir')
-                    mkdir(rootDir);
-                end
-            
-                % Optional dedicated sweep folder
-                sweepDir = fullfile(rootDir, 'sweep_state');
-                if ~exist(sweepDir, 'dir')
-                    mkdir(sweepDir);
-                end
-            
-                T = obj.brainReport;
-                S = obj.sweepSummary;
-            
-                % ---- CSV ----
-                csvPath = fullfile(sweepDir, 'sweep_tracking.csv');
-                skull.Brain.writeTableAtomic(csvPath, T);
-            
-                % ---- MAT ----
-                matPath = fullfile(sweepDir, 'sweep_tracking.mat');
-                skull.Brain.writeMatAtomic(matPath, T, S);
-            
-                % ---- JSON ----
-                jsonPath = fullfile(sweepDir, 'sweep_tracking.json');
-                jsonStruct = struct();
-                jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', ...
-                    'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
-                jsonStruct.summary = S;
-                jsonStruct.rows = skull.Brain.tableToStructArray(T);
-                skull.Brain.writeJsonAtomic(jsonPath, jsonStruct);
-            
-                % ---- TXT flagged report ----
-                txtPath = fullfile(sweepDir, 'sweep_flagged_runs.txt');
-                skull.Brain.writeFlaggedTxtAtomic(txtPath, T, S);
         end
 
         function history = runSingle(obj)
@@ -487,7 +485,7 @@ classdef Brain < handle
             % end
 
             % Persist rolling reports immediately after every appended row
-            obj.writeSweepTrackingFilesAtomic();
+            writeSweepTrackingFilesAtomic(obj);
 
                 
         end
