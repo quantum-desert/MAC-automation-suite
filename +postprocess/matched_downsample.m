@@ -1,4 +1,4 @@
-function tank_r = matched_downsample(constants,tank,deterministic)
+function tank_r = matched_downsample(constants,tank,deterministic,show_SNR)
 % ---- apply matched filter
 
 % assign local
@@ -95,13 +95,13 @@ for w=1:length(W)
     % calculate SNR
     SNR(w) = (abs(mean(Xp)-mean(Xm)))^2/(4*std(Xp)^2);
 end
-
+if(show_SNR)
 figure; hold on;
 stem(SNR);
 xlabel('Start \phi');
 ylabel('SNR');
 title(strcat('Sampling \phi Optimization: ',tank_r.label));
-
+end
 
 
 % extract best sampling phase

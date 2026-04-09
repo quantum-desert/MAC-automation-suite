@@ -19,6 +19,7 @@ cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
 cfg.processing.deterministic = true;
+cfg.processing.show_SNR=false;
 
 cfg.physics = struct();
 

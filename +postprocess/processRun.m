@@ -17,8 +17,8 @@ shorten = cfg.processing.shorten;
 tank_S1 = postprocess.preprocess_data(fnames_S1,cfg.constants,shorten);
 tank_S2 = postprocess.preprocess_data(fnames_S2,cfg.constants,shorten);
 
-tank_S1 = postprocess.matched_downsample(cfg.constants,tank_S1,cfg.processing.deterministic);
-tank_S2 = postprocess.matched_downsample(cfg.constants,tank_S2,cfg.processing.deterministic);
+tank_S1 = postprocess.matched_downsample(cfg.constants,tank_S1,cfg.processing.deterministic,cfg.processing.show_SNR);
+tank_S2 = postprocess.matched_downsample(cfg.constants,tank_S2,cfg.processing.deterministic,cfg.processing.show_SNR);
 
 if cfg.processing.makePlots
     postprocess.visualize_v2(tank_S1,cfg.constants);

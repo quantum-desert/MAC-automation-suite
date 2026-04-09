@@ -49,7 +49,7 @@ classdef Brain < handle
             brainReport = T; %#ok<NASGU>
             sweepSummary = S; %#ok<NASGU>
             save(tmpPath, 'brainReport', 'sweepSummary', '-v7.3');
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
     
         function writeJsonAtomic(finalPath, s)
@@ -62,7 +62,7 @@ classdef Brain < handle
             fprintf(fid, '%s', txt);
             fclose(fid);
         
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
     
         function writeFlaggedTxtAtomic(finalPath, T, S)
@@ -101,7 +101,7 @@ classdef Brain < handle
         
             fclose(fid);
         
-            skull.Brain.replaceFileAtomic(tmpPath, finalPath);
+            replaceFileAtomic(tmpPath, finalPath);
         end
 
     function replaceFileAtomic(tmpPath, finalPath)
@@ -232,7 +232,7 @@ classdef Brain < handle
                 jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', ...
                     'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
                 jsonStruct.summary = S;
-                jsonStruct.rows = skull.Brain.tableToStructArray(T);
+                jsonStruct.rows = tableToStructArray(T);
                 skull.Brain.writeJsonAtomic(jsonPath, jsonStruct);
             
                 % ---- TXT flagged report ----
