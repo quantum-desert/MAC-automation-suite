@@ -110,6 +110,9 @@ tank_r.dst = tank_r.t_homo(sample_index_arr);
 % downsample (amplitude)
 tank_r.dsA = tank_r.A_homo_filt(sample_index_arr);
 
+% IMPORTANT: recompute labels for the chosen best phase
+tank_r.ds_mod_A = tank_r.A_mod_d(sample_index_arr);
+
 % ---- Fitting
 % apply fits
 tank_r.fit = struct;
