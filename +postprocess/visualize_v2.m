@@ -7,13 +7,36 @@ function visualize_v2(tank,constants) %#ok<INUSD>
 
 % TIME DOMAIN PLOT
 figure; hold on;
+subplot(1,3,1);
+start=1;
 lim=1e3;
 lim_ds = floor(lim/tank.report.M);
-plot(tank.t_homo(1:lim),tank.A_homo(1:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
-plot(tank.t_homo(1:lim),tank.A_homo_filt(1:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
-plot(tank.t_mod(1:lim),tank.A_mod_d(1:lim)./10,LineWidth=2,DisplayName='Modulation');
-s=scatter(tank.dst(1:lim_ds),tank.dsA(1:lim_ds),DisplayName='Downsampled');
-xlim([min(tank.t_mod(1:lim)) max(tank.t_mod(1:lim))]);
+plot(tank.t_homo(start:lim),tank.A_homo(start:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
+plot(tank.t_homo(start:lim),tank.A_homo_filt(start:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
+plot(tank.t_mod(start:lim),tank.A_mod_d(start:lim),LineWidth=2,DisplayName='Modulation');
+s=scatter(tank.dst(start:lim_ds),tank.dsA(start:lim_ds),DisplayName='Downsampled');
+xlim([min(tank.t_mod(start:lim)) max(tank.t_mod(start:lim))]);
+
+subplot(1,3,2);
+start=lim;
+lim=start+lim;
+lim_ds = floor(lim/tank.report.M);
+plot(tank.t_homo(start:lim),tank.A_homo(start:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
+plot(tank.t_homo(start:lim),tank.A_homo_filt(start:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
+plot(tank.t_mod(start:lim),tank.A_mod_d(start:lim),LineWidth=2,DisplayName='Modulation');
+s=scatter(tank.dst(start:lim_ds),tank.dsA(start:lim_ds),DisplayName='Downsampled');
+xlim([min(tank.t_mod(start:lim)) max(tank.t_mod(start:lim))]);
+
+subplot(1,3,3);
+start=lim;
+lim=start+lim;
+lim_ds = floor(lim/tank.report.M);
+plot(tank.t_homo(start:lim),tank.A_homo(start:lim),LineWidth=2,DisplayName='Homodyne (Raw)');
+plot(tank.t_homo(start:lim),tank.A_homo_filt(start:lim),LineWidth=2,DisplayName='Homodyne (Filt.)');
+plot(tank.t_mod(start:lim),tank.A_mod_d(start:lim),LineWidth=2,DisplayName='Modulation');
+s=scatter(tank.dst(start:lim_ds),tank.dsA(start:lim_ds),DisplayName='Downsampled');
+xlim([min(tank.t_mod(start:lim)) max(tank.t_mod(start:lim))]);
+
 
 s.MarkerFaceColor='m';
 title(strcat('Time Domain: ',tank.label));
