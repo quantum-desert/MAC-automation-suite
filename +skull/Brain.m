@@ -36,6 +36,140 @@ classdef Brain < handle
                 end
             end
         end
+
+        function writeSweepTrackingFilesAtomic(obj)
+            % Write rolling sweep tracking artifacts to disk after every run.
+            % Uses temp-file + replace semantics so files stay valid if MATLAB crashes.
+            
+                if ~isprop(obj, 'cfg') || ~isfield(obj.cfg, 'storage') || ~isfield(obj.cfg.storage, 'rootDir')
+                    warning('Brain:writeSweepTrackingFilesAtomic:MissingRootDir', ...
+                        'cfg.storage.rootDir is missing. Sweep summary not written.');
+                    return;
+                end
+            
+                rootDir = string(obj.cfg.storage.rootDir);
+                if strlength(rootDir) == 0
+                    warning('Brain:writeSweepTrackingFilesAtomic:EmptyRootDir', ...
+                        'cfg.storage.rootDir is empty. Sweep summary not written.');
+                    return;
+                end
+            
+                if ~exist(rootDir, 'dir')
+                    mkdir(rootDir);
+                end
+            
+                % Optional dedicated sweep folder
+                sweepDir = fullfile(rootDir, 'sweep_state');
+                if ~exist(sweepDir, 'dir')
+                    mkdir(sweepDir);
+                end
+            
+                T = obj.sweepTable;
+                S = obj.sweepSummary;
+            
+                % ---- CSV ----
+                csvPath = fullfile(sweepDir, 'sweep_tracking.csv');
+                writeTableAtomic(csvPath, T);
+            
+                % ---- MAT ----
+                matPath = fullfile(sweepDir, 'sweep_tracking.mat');
+                writeMatAtomic(matPath, T, S);
+            
+                % ---- JSON ----
+                jsonPath = fullfile(sweepDir, 'sweep_tracking.json');
+                jsonStruct = struct();
+                jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', ...
+                    'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
+                jsonStruct.summary = S;
+                jsonStruct.rows = tableToStructArray(T);
+                writeJsonAtomic(jsonPath, jsonStruct);
+            
+                % ---- TXT flagged report ----
+                txtPath = fullfile(sweepDir, 'sweep_flagged_runs.txt');
+                writeFlaggedTxtAtomic(txtPath, T, S);
+        end
+        function writeTableAtomic(finalPath, T)
+            tmpPath = finalPath + ".tmp";
+            writetable(T, tmpPath, 'FileType', 'text');
+            replaceFileAtomic(tmpPath, finalPath);
+        end
+
+        function writeMatAtomic(finalPath, T, S)
+            tmpPath = finalPath + ".tmp";
+            sweepTable = T; %#ok<NASGU>
+            sweepSummary = S; %#ok<NASGU>
+            save(tmpPath, 'sweepTable', 'sweepSummary', '-v7.3');
+            replaceFileAtomic(tmpPath, finalPath);
+        end
+    
+        function writeJsonAtomic(finalPath, s)
+            tmpPath = finalPath + ".tmp";
+            txt = jsonencode(s, 'PrettyPrint', true);
+        
+            fid = fopen(tmpPath, 'w');
+            assert(fid >= 0, 'Could not open temp JSON file for writing: %s', tmpPath);
+            c = onCleanup(@() fclose(fid));
+            fprintf(fid, '%s', txt);
+            fclose(fid);
+        
+            replaceFileAtomic(tmpPath, finalPath);
+        end
+    
+        function writeFlaggedTxtAtomic(finalPath, T, S)
+            tmpPath = finalPath + ".tmp";
+        
+            fid = fopen(tmpPath, 'w');
+            assert(fid >= 0, 'Could not open temp TXT file for writing: %s', tmpPath);
+            c = onCleanup(@() fclose(fid));
+        
+            fprintf(fid, 'Sweep Flagged Runs Report\n');
+            fprintf(fid, '=========================\n\n');
+            fprintf(fid, 'Last updated UTC: %s\n', ...
+                char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd HH:mm:ss')));
+            fprintf(fid, 'Total runs: %d\n', S.totalRuns);
+            fprintf(fid, 'S1 beats classical: %d\n', S.numS1BeatsClassical);
+            fprintf(fid, 'S2 beats classical: %d\n', S.numS2BeatsClassical);
+            fprintf(fid, 'Either beats classical: %d\n', S.numAnyBeatsClassical);
+            fprintf(fid, 'Both beat classical: %d\n\n', S.numBothBeatClassical);
+        
+            flagged = T(T.anyBeatsClassical, :);
+        
+            if isempty(flagged)
+                fprintf(fid, 'No runs satisfied SNRe > SNR_C.\n');
+            else
+                fprintf(fid, 'Runs where SNRe > SNR_C\n');
+                fprintf(fid, '-----------------------\n');
+                for i = 1:height(flagged)
+                    fprintf(fid, 'Run %-6g | %-7s | S1 margin = %+0.6g | S2 margin = %+0.6g | %s\n', ...
+                        flagged.runIndex(i), ...
+                        string(flagged.flag(i)), ...
+                        flagged.S1_margin(i), ...
+                        flagged.S2_margin(i), ...
+                        string(flagged.runDir(i)));
+                end
+            end
+        
+            fclose(fid);
+        
+            replaceFileAtomic(tmpPath, finalPath);
+        end
+
+    function replaceFileAtomic(tmpPath, finalPath)
+    % Best-effort atomic replace:
+    % 1) delete old file if it exists
+    % 2) move temp file into place
+    
+        if isfile(finalPath)
+            delete(finalPath);
+        end
+    
+        ok = movefile(tmpPath, finalPath, 'f');
+        if ~ok
+            error('Could not replace file: %s', finalPath);
+        end
+    end
+
+
     end
     methods
         function obj = Brain(cfg,session)
@@ -346,9 +480,14 @@ classdef Brain < handle
                 shouldSave = logical(obj.cfg.brain.saveSweepSummary);
             end
         
-            if shouldSave
-                writeSweepTrackingFiles(obj);
-            end
+            % if shouldSave
+            %     writeSweepTrackingFiles(obj);
+            % end
+
+            % Persist rolling reports immediately after every appended row
+            writeSweepTrackingFilesAtomic(obj);
+
+                
         end
 
         function writeSweepTrackingFiles(obj)
