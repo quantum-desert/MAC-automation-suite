@@ -52,6 +52,7 @@ hp=histogram(tank.fit.Xp,'NumBins',n/2,'DisplayName','X^+');
 hm=histogram(tank.fit.Xm,'NumBins',n/2,'DisplayName','X^-');
 
 % plot fits
+try
 hpf = plot(tank.fit.f_p);
 hpf.YData = hpf.YData*max(hp.Values)/max(hpf.YData);
 hpf.LineWidth = 2; hpf.Color = constants.purple;
@@ -71,7 +72,9 @@ set(hp,'FaceColor',constants.purple);
 set(hp,'FaceAlpha',1);
 set(hm,'FaceColor',constants.orange);
 set(hm,'FaceAlpha',.6);
-
+catch
+    warning('Could not print plots');
+end
 
 % FREQUENCY DOMAIN PLOT
 plot_ft(tank.report.Fs, tank.A_mod, tank.A_homo, tank.A_homo_filt,tank.label);

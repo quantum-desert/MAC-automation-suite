@@ -49,11 +49,17 @@ cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 % control plot output
 cfg.postprocess.processing.makePlots = true;
 cfg.postprocess.processing.shorten = 1;
+cfg.postprocess.processing.showSNR = true;
+
+
+% 1010 versus PN15 mod selection here
+cfg.postprocess.processing.deterministic = true;
+% ----
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 
-% indicate finish
+% --- indicate finish
 % load gong;
 % sound(y,Fs);
-system('powershell -c (New-Object Media.SoundPlayer ''C:\Windows\Media\notify.wav'').PlaySync()');
+% system('powershell -c (New-Object Media.SoundPlayer ''C:\Windows\Media\notify.wav'').PlaySync()');
 

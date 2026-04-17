@@ -66,7 +66,8 @@ function package = build_physics(physics_cfg, phys_constants, constants)
         (phys_constants.h * phys_constants.nu * phys_constants.W);
 
     % Symbol timing / modes per symbol
-    package.T = 1 / constants.Rb;
+    % consisten with SNR definition....
+    package.T = 1 / (constants.Rb);
     package.Modes = phys_constants.W * package.T;
 
     % Theoretical SNRs

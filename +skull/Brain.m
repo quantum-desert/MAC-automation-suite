@@ -50,17 +50,28 @@ classdef Brain < handle
             skull.Brain.replaceFileAtomic(tmpPath, finalPath);
         end
 
-        function writeJsonAtomic(finalPath, s)
+       function writeJsonAtomic(finalPath, s)
             tmpPath = finalPath + ".tmp";
             outDir = fileparts(finalPath);
             if ~isempty(outDir) && ~exist(outDir, 'dir')
                 mkdir(outDir);
             end
+        
             txt = jsonencode(s, 'PrettyPrint', true);
+        
             fid = fopen(tmpPath, 'w');
             assert(fid >= 0, 'Could not open temp JSON file for writing: %s', tmpPath);
-            c = onCleanup(@() fclose(fid)); %#ok<NASGU>
-            fprintf(fid, '%s', txt);
+        
+            try
+                fprintf(fid, '%s', txt);
+                fclose(fid);
+            catch ME
+                if fid >= 0
+                    fclose(fid);
+                end
+                rethrow(ME);
+            end
+        
             skull.Brain.replaceFileAtomic(tmpPath, finalPath);
         end
 
@@ -70,29 +81,47 @@ classdef Brain < handle
             if ~isempty(outDir) && ~exist(outDir, 'dir')
                 mkdir(outDir);
             end
+        
             fid = fopen(tmpPath, 'w');
             assert(fid >= 0, 'Could not open temp TXT file for writing: %s', tmpPath);
-            c = onCleanup(@() fclose(fid)); %#ok<NASGU>
-            fprintf(fid, 'Sweep Flagged Runs Report\n');
-            fprintf(fid, '=========================\n\n');
-            fprintf(fid, 'Last updated UTC: %s\n', char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd HH:mm:ss')));
-            fprintf(fid, 'Total runs: %d\n', S.totalRuns);
-            fprintf(fid, 'S1 beats classical: %d\n', S.numS1BeatsClassical);
-            fprintf(fid, 'S2 beats classical: %d\n', S.numS2BeatsClassical);
-            fprintf(fid, 'Either beats classical: %d\n', S.numAnyBeatsClassical);
-            fprintf(fid, 'Both beat classical: %d\n\n', S.numBothBeatClassical);
-
-            flagged = T(T.anyBeatsClassical, :);
-            if isempty(flagged)
-                fprintf(fid, 'No runs satisfied SNRe > SNR_C.\n');
-            else
-                fprintf(fid, 'Runs where SNRe > SNR_C\n');
-                fprintf(fid, '-----------------------\n');
-                for i = 1:height(flagged)
-                    fprintf(fid, 'Run %-6g | %-7s | S1 margin = %+0.6g | S2 margin = %+0.6g | %s\n', ...
-                        flagged.runIndex(i), string(flagged.flag(i)), flagged.S1_margin(i), flagged.S2_margin(i), string(flagged.runDir(i)));
+        
+            try
+                fprintf(fid, 'Sweep Flagged Runs Report\n');
+                fprintf(fid, '=========================\n\n');
+                fprintf(fid, 'Last updated UTC: %s\n', ...
+                    char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd HH:mm:ss')));
+                fprintf(fid, 'Total runs: %d\n', S.totalRuns);
+                fprintf(fid, 'S1 beats classical: %d\n', S.numS1BeatsClassical);
+                fprintf(fid, 'S2 beats classical: %d\n', S.numS2BeatsClassical);
+                fprintf(fid, 'Either beats classical: %d\n', S.numAnyBeatsClassical);
+                fprintf(fid, 'Both beat classical: %d\n\n', S.numBothBeatClassical);
+        
+                flagged = T(T.anyBeatsClassical, :);
+        
+                if isempty(flagged)
+                    fprintf(fid, 'No runs satisfied SNRe > SNR_C.\n');
+                else
+                    fprintf(fid, 'Runs where SNRe > SNR_C\n');
+                    fprintf(fid, '-----------------------\n');
+                    for i = 1:height(flagged)
+                        fprintf(fid, ...
+                            'Run %-6g | %-7s | S1 margin = %+0.6g | S2 margin = %+0.6g | %s\n', ...
+                            flagged.runIndex(i), ...
+                            string(flagged.flag(i)), ...
+                            flagged.S1_margin(i), ...
+                            flagged.S2_margin(i), ...
+                            string(flagged.runDir(i)));
+                    end
                 end
+        
+                fclose(fid);
+            catch ME
+                if fid >= 0
+                    fclose(fid);
+                end
+                rethrow(ME);
             end
+        
             skull.Brain.replaceFileAtomic(tmpPath, finalPath);
         end
 
@@ -130,7 +159,7 @@ classdef Brain < handle
                 entry.runDir = "";
                 entry.acquisition = [];
                 entry.processing = [];
-                entry.error = "";
+                entry.error = char("");
 
                 acq = struct();
 
@@ -147,7 +176,7 @@ classdef Brain < handle
                         entry.processing = proc;
                     end
                 catch ME
-                    entry.error = string(getReport(ME, 'extended', 'hyperlinks', 'off'));
+                    entry.error = char(getReport(ME, 'extended', 'hyperlinks', 'off'));
                     obj.history(end+1) = entry; %#ok<AGROW>
                     if obj.cfg.brain.stopOnError
                         rethrow(ME);
@@ -158,7 +187,7 @@ classdef Brain < handle
                     obj.history(end+1) = entry; %#ok<AGROW>
                 end
 
-                if isempty(entry.error) && obj.cfg.brain.processAfterAcquire && ~isempty(entry.processing)
+                if obj.cfg.brain.processAfterAcquire && ~isempty(entry.processing)
                     obj = obj.recordPostprocess(acq, entry.processing);
                 end
 
@@ -383,9 +412,9 @@ classdef Brain < handle
             if isfield(obj.cfg, 'brain') && isfield(obj.cfg.brain, 'saveSweepSummary')
                 shouldSave = logical(obj.cfg.brain.saveSweepSummary);
             end
-            if shouldSave
+            % if shouldSave
                 obj.writeSweepTrackingFilesAtomic();
-            end
+            % end
         end
     end
 end

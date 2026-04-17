@@ -9,6 +9,13 @@ if(deterministic)
 % try subtract ma
 tank_r.A_homo = tank_r.A_homo - movmean(tank_r.A_homo,2*tank_r.report.M);
 
+% % discard based samples
+% valid_start = ceil(tank_r.report.M);          % first fully-unbiased sample
+% tank_r.A_homo = tank_r.A_homo(valid_start:end); 
+% tank_r.t_homo = tank_r.t_homo(valid_start:end);
+% tank_r.A_mod_d = tank_r.A_mod_d(valid_start:end);
+% tank_r.t_mod = tank_r.t_mod(valid_start:end);
+
 % % apply low pass filter
 % [b,a] = butter(3, 1*constants.Rb/tank.report.Fn,'low');     % 3rd order low-pass
 % tank_r.A_homo_filt = filter(b,a,tank_r.A_homo);
@@ -27,15 +34,16 @@ tank_r.A_homo_filt = filtfilt(b,a,tank_r.A_homo);
 else
 % apply boxcar filter -> spectrally matched filter
 haf=ones(1, tank_r.report.M) / (tank_r.report.M);     % moving avg. boxcar filter
-tank_r.A_homo_filt = filter(haf,1,tank_r.A_homo); % apply filter
+tank_r.A_homo_filt = filtfilt(haf,1,tank_r.A_homo); % apply filter
+% tank_r.A_homo_filt = filter(haf,1,tank_r.A_homo); % apply filter
+
+% truncate to account for phase delay from filter (not filtfilt)
+% lag=floor(tank_r.report.M/2);
+% tank_r.A_homo_filt = tank_r.A_homo_filt(1+lag:end);
+% tank_r.A_mod_d = tank_r.A_mod_d(1:end-lag);
 end
 
-% truncate to account for phase delay from filter
-if(~deterministic)
-    lag=floor(tank_r.report.M/2);
-    tank_r.A_homo_filt = tank_r.A_homo_filt(1+lag:end);
-    tank_r.A_mod_d = tank_r.A_mod_d(1:end-lag);
-end
+
 
 % TODO: do we need to optimize lag first?
 
@@ -48,8 +56,8 @@ end_idx = min(floor(tank_r.report.M/2+tank_r.report.M*tank_r.report.N),floor(len
 
 % ---- optimize start phase
 
-% scan over 2 bits worth
-N_phase = 2*tank_r.report.M;
+% scan over 4 bits worth
+N_phase = 4*tank_r.report.M;
 
 W = linspace(1,N_phase,N_phase);
 SNR = zeros(size(W));
@@ -140,10 +148,10 @@ for t=1:length(tank_r.dsA)-1
     end
 end
 
-disp(strcat('Xp mean: ',num2str(mean(tank_r.fit.Xp))));
-disp(strcat('Xm mean: ',num2str(mean(tank_r.fit.Xm))));
-disp(strcat('Separation^2: ',num2str(abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm))^2)));
-disp(strcat('Xp Variance: ',num2str(std(tank_r.fit.Xp)^2)));
+% disp(strcat('Xp mean: ',num2str(mean(tank_r.fit.Xp))));
+% disp(strcat('Xm mean: ',num2str(mean(tank_r.fit.Xm))));
+% disp(strcat('Separation^2: ',num2str(abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm))^2)));
+% disp(strcat('Xp Variance: ',num2str(std(tank_r.fit.Xp)^2)));
 
 % store best SNR
 tank_r.fit.SNRe = (abs(mean(tank_r.fit.Xp)-mean(tank_r.fit.Xm)))^2/(4*std(tank_r.fit.Xp)^2);
@@ -155,7 +163,7 @@ tank_r.fit.SNRf = tank_r.fit.SNRe*sqrt(constants.BW_t/constants.RBW); % (predict
 bw=1e-5;
 
  % plus ()
- 
+ try
 [counts_p, edges_p] = histcounts(tank_r.fit.Xp,'BinWidth',bw);
 binCenters_p = (edges_p(1:end-1) + edges_p(2:end)) / 2;
 [tank_r.fit.f_p, ~] = fit(binCenters_p', counts_p', 'gauss1');
@@ -164,7 +172,9 @@ binCenters_p = (edges_p(1:end-1) + edges_p(2:end)) / 2;
 [counts_m, edges_m] = histcounts(tank_r.fit.Xm,'BinWidth',bw);
 binCenters_m = (edges_m(1:end-1) + edges_m(2:end)) / 2;
 [tank_r.fit.f_m, ~] = fit(binCenters_m', counts_m', 'gauss1');
-
+ catch
+     warning('Fitting failed');
+ end
 
 % store some parameters
 tank_r.report.ds_len = length(tank_r.dsA);
