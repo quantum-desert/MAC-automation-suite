@@ -8,6 +8,8 @@ classdef Brain < handle
         elapsedSeconds double = 0
         brainReport
         sweepSummary
+        batchId string = ""
+        batchStartedAtUtc string = ""
     end
 
     methods (Static)
@@ -125,6 +127,54 @@ classdef Brain < handle
             skull.Brain.replaceFileAtomic(tmpPath, finalPath);
         end
 
+        function out = toJsonSafe(in)
+            if isstruct(in)
+                out = struct();
+                f = fieldnames(in);
+                for k = 1:numel(f)
+                    out.(f{k}) = skull.Brain.toJsonSafe(in.(f{k}));
+                end
+                return;
+            end
+
+            if iscell(in)
+                out = cell(size(in));
+                for k = 1:numel(in)
+                    out{k} = skull.Brain.toJsonSafe(in{k});
+                end
+                return;
+            end
+
+            if isdatetime(in)
+                if isscalar(in)
+                    out = char(string(in));
+                else
+                    out = cellstr(string(in));
+                end
+                return;
+            end
+
+            if isduration(in)
+                if isscalar(in)
+                    out = char(string(in));
+                else
+                    out = cellstr(string(in));
+                end
+                return;
+            end
+
+            if isstring(in)
+                if isscalar(in)
+                    out = char(in);
+                else
+                    out = cellstr(in);
+                end
+                return;
+            end
+
+            out = in;
+        end
+
         function replaceFileAtomic(tmpPath, finalPath)
             if isfile(finalPath)
                 delete(finalPath);
@@ -143,6 +193,9 @@ classdef Brain < handle
             obj.history = struct('runIndex', {}, 'runDir', {}, 'acquisition', {}, 'processing', {}, 'error', {});
             obj.brainReport = table();
             obj.sweepSummary = struct();
+            tsBatch = datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyyMMdd_HHmmssSSS');
+            obj.batchId = "batch_" + string(tsBatch);
+            obj.batchStartedAtUtc = string(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
         end
 
         function history = run(obj)
@@ -269,13 +322,19 @@ classdef Brain < handle
                 mkdir(rootDir);
             end
 
-            sweepDir = fullfile(rootDir, 'sweep_state');
+            sweepRootDir = fullfile(rootDir, 'sweep_state');
+            if ~exist(sweepRootDir, 'dir')
+                mkdir(sweepRootDir);
+            end
+
+            sweepDir = fullfile(sweepRootDir, char(obj.batchId));
             if ~exist(sweepDir, 'dir')
                 mkdir(sweepDir);
             end
 
             T = obj.brainReport;
             S = obj.sweepSummary;
+            batchInfo = obj.buildBatchInfo(T);
 
             skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), T);
             skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), T, S);
@@ -283,13 +342,17 @@ classdef Brain < handle
             jsonStruct = struct();
             jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
             jsonStruct.summary = S;
+            jsonStruct.batch = batchInfo;
             jsonStruct.rows = skull.Brain.tableToStructArray(T);
             skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'sweep_tracking.json'), jsonStruct);
+            skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'batch_info.json'), batchInfo);
 
             skull.Brain.writeFlaggedTxtAtomic(fullfile(sweepDir, 'sweep_flagged_runs.txt'), T, S);
 
             status = struct();
             status.lastUpdatedUtc = jsonStruct.lastUpdatedUtc;
+            status.batchId = char(obj.batchId);
+            status.batchDir = char(string(sweepDir));
             status.totalRuns = S.totalRuns;
             if ~isempty(T)
                 status.lastRunIndex = T.runIndex(end);
@@ -301,6 +364,18 @@ classdef Brain < handle
                 status.lastFlag = '';
             end
             skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'latest_status.json'), status);
+
+            latestBatch = struct();
+            latestBatch.lastUpdatedUtc = jsonStruct.lastUpdatedUtc;
+            latestBatch.batchId = char(obj.batchId);
+            latestBatch.batchDir = char(string(sweepDir));
+            latestBatch.batch = batchInfo;
+            skull.Brain.writeJsonAtomic(fullfile(sweepRootDir, 'latest_batch.json'), latestBatch);
+
+            physicsCfg = obj.extractPhysicsCfg();
+            if ~isempty(physicsCfg)
+                skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'physics_cfg.json'), physicsCfg);
+            end
         end
 
         function writeSweepSummary(obj)
@@ -415,6 +490,53 @@ classdef Brain < handle
             % if shouldSave
                 obj.writeSweepTrackingFilesAtomic();
             % end
+        end
+
+        function batchInfo = buildBatchInfo(obj, T)
+            batchInfo = struct();
+            batchInfo.batchId = char(obj.batchId);
+            batchInfo.startedAtUtc = char(obj.batchStartedAtUtc);
+            batchInfo.updatedAtUtc = char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
+            batchInfo.numRunsInBatch = height(T);
+
+            if isempty(T)
+                defaultStart = NaN;
+                if isfield(obj.cfg, 'acquisition') && isfield(obj.cfg.acquisition, 'runIndex')
+                    defaultStart = obj.cfg.acquisition.runIndex;
+                end
+                batchInfo.runIndexStart = defaultStart;
+                batchInfo.runIndexEnd = defaultStart;
+                batchInfo.runIndices = [];
+                return;
+            end
+
+            runIdx = T.runIndex;
+            runIdx = runIdx(~isnan(runIdx));
+            if isempty(runIdx)
+                batchInfo.runIndexStart = NaN;
+                batchInfo.runIndexEnd = NaN;
+                batchInfo.runIndices = [];
+                return;
+            end
+
+            batchInfo.runIndexStart = min(runIdx);
+            batchInfo.runIndexEnd = max(runIdx);
+            batchInfo.runIndices = runIdx(:)';
+        end
+
+        function physicsCfg = extractPhysicsCfg(obj)
+            physicsCfg = struct();
+
+            if isfield(obj.cfg, 'postprocess') && isfield(obj.cfg.postprocess, 'physics')
+                physicsCfg = obj.cfg.postprocess.physics;
+            elseif isfield(obj.cfg, 'physics')
+                physicsCfg = obj.cfg.physics;
+            else
+                physicsCfg = [];
+                return;
+            end
+
+            physicsCfg = skull.Brain.toJsonSafe(physicsCfg);
         end
     end
 end
