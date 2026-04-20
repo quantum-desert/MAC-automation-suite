@@ -41,7 +41,7 @@ end
 
 
 % Configure the sweep timer here
-hours=1;
+hours=3;
 minutes=60*hours;
 cfg.brain.runDurationSeconds = floor(60*minutes);
 cfg.brain.pauseBetweenRunsSeconds = 1;
@@ -54,7 +54,7 @@ cfg.postprocess.processing.showSNR = false;
 cfg.postprocess.processing.shorten = 1;
 
 % 1010 versus PN15 mod selection here
-cfg.postprocess.processing.deterministic = true;
+cfg.postprocess.processing.deterministic = false;
 % ----
 
 history = lecroy.runSweep(cfg,session); %#ok<NASGU>
