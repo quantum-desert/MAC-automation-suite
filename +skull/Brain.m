@@ -322,7 +322,16 @@ classdef Brain < handle
                 mkdir(rootDir);
             end
 
-            sweepRootDir = fullfile(rootDir, 'sweep_state');
+            T = obj.brainReport;
+            S = obj.sweepSummary;
+            batchInfo = obj.buildBatchInfo(T);
+
+            sweepBaseDir = obj.resolveSweepBaseDir(T, rootDir);
+            if ~exist(sweepBaseDir, 'dir')
+                mkdir(sweepBaseDir);
+            end
+
+            sweepRootDir = fullfile(sweepBaseDir, 'sweep_state');
             if ~exist(sweepRootDir, 'dir')
                 mkdir(sweepRootDir);
             end
@@ -331,10 +340,6 @@ classdef Brain < handle
             if ~exist(sweepDir, 'dir')
                 mkdir(sweepDir);
             end
-
-            T = obj.brainReport;
-            S = obj.sweepSummary;
-            batchInfo = obj.buildBatchInfo(T);
 
             skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), T);
             skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), T, S);
@@ -537,6 +542,29 @@ classdef Brain < handle
             end
 
             physicsCfg = skull.Brain.toJsonSafe(physicsCfg);
+        end
+
+        function sweepBaseDir = resolveSweepBaseDir(obj, T, rootDir)
+            % Prefer the date-folder parent of the current run directory.
+            if ~isempty(T) && any(strcmp('runDir', T.Properties.VariableNames))
+                lastRunDir = char(string(T.runDir(end)));
+                if ~isempty(lastRunDir)
+                    candidate = fileparts(lastRunDir);
+                    if ~isempty(candidate)
+                        sweepBaseDir = string(candidate);
+                        return;
+                    end
+                end
+            end
+
+            % Fallback: mirror acquisition folder strategy if enabled.
+            if isfield(obj.cfg, 'storage') && isfield(obj.cfg.storage, 'createDateFolder') && ...
+                    logical(obj.cfg.storage.createDateFolder)
+                dateDir = string(datetime('today', 'Format', 'yyyy-MM-dd'));
+                sweepBaseDir = fullfile(rootDir, dateDir);
+            else
+                sweepBaseDir = rootDir;
+            end
         end
     end
 end
