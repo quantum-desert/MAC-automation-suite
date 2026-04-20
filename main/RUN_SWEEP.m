@@ -41,7 +41,7 @@ end
 
 
 % Configure the sweep timer here
-hours=12;
+hours=1;
 minutes=60*hours;
 cfg.brain.runDurationSeconds = floor(60*minutes);
 cfg.brain.pauseBetweenRunsSeconds = 1;

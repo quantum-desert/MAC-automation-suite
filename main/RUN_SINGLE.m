@@ -53,7 +53,7 @@ cfg.postprocess.processing.showSNR = true;
 
 
 % 1010 versus PN15 mod selection here
-cfg.postprocess.processing.deterministic = true;
+cfg.postprocess.processing.deterministic = false;
 % ----
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
