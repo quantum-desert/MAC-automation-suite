@@ -193,15 +193,7 @@ classdef Brain < handle
             obj.history = struct('runIndex', {}, 'runDir', {}, 'acquisition', {}, 'processing', {}, 'error', {});
             obj.brainReport = table();
             obj.sweepSummary = struct();
-            tsBatch = datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyyMMdd_HHmmssSSS');
-            runTag = "runNA";
-            if isfield(cfg, 'acquisition') && isfield(cfg.acquisition, 'runIndex')
-                runVal = cfg.acquisition.runIndex;
-                if isnumeric(runVal) && isscalar(runVal) && isfinite(runVal)
-                    runTag = "run" + string(sprintf('%05d', round(runVal)));
-                end
-            end
-            obj.batchId = "batch_" + string(tsBatch) + "_" + runTag;
+            obj.batchId = "";
             obj.batchStartedAtUtc = string(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
         end
 
@@ -332,6 +324,10 @@ classdef Brain < handle
             T = obj.brainReport;
             S = obj.sweepSummary;
             batchInfo = obj.buildBatchInfo(T);
+            TTracking = T;
+            if any(strcmp('runDir', TTracking.Properties.VariableNames))
+                TTracking.runDir = [];
+            end
 
             sweepBaseDir = obj.resolveSweepBaseDir(T, rootDir);
             if ~exist(sweepBaseDir, 'dir')
@@ -343,19 +339,23 @@ classdef Brain < handle
                 mkdir(sweepRootDir);
             end
 
+            if strlength(obj.batchId) == 0
+                obj.batchId = obj.allocateNextBatchId(sweepRootDir);
+            end
+
             sweepDir = fullfile(sweepRootDir, char(obj.batchId));
             if ~exist(sweepDir, 'dir')
                 mkdir(sweepDir);
             end
 
-            skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), T);
-            skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), T, S);
+            skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), TTracking);
+            skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), TTracking, S);
 
             jsonStruct = struct();
             jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
             jsonStruct.summary = S;
             jsonStruct.batch = batchInfo;
-            jsonStruct.rows = skull.Brain.tableToStructArray(T);
+            jsonStruct.rows = skull.Brain.tableToStructArray(TTracking);
             skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'sweep_tracking.json'), jsonStruct);
             skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'batch_info.json'), batchInfo);
             % Mirror a per-batch tracker at sweep_state root so each batch has
@@ -373,11 +373,9 @@ classdef Brain < handle
             status.totalRuns = S.totalRuns;
             if ~isempty(T)
                 status.lastRunIndex = T.runIndex(end);
-                status.lastRunDir = char(string(T.runDir(end)));
                 status.lastFlag = char(string(T.flag(end)));
             else
                 status.lastRunIndex = NaN;
-                status.lastRunDir = '';
                 status.lastFlag = '';
             end
             skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'latest_status.json'), status);
@@ -620,6 +618,25 @@ classdef Brain < handle
             else
                 sweepBaseDir = rootDir;
             end
+        end
+
+        function batchId = allocateNextBatchId(~, sweepRootDir)
+            d = dir(fullfile(sweepRootDir, 'batch_*'));
+            maxIdx = 0;
+            for i = 1:numel(d)
+                if ~d(i).isdir
+                    continue;
+                end
+                tok = regexp(d(i).name, '^batch_(\d+)$', 'tokens', 'once');
+                if isempty(tok)
+                    continue;
+                end
+                idx = str2double(tok{1});
+                if isfinite(idx) && idx > maxIdx
+                    maxIdx = idx;
+                end
+            end
+            batchId = "batch_" + string(maxIdx + 1);
         end
     end
 end
