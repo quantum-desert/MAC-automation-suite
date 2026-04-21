@@ -411,7 +411,8 @@ classdef Brain < handle
             summary.runIndices = arrayfun(@(x) x.runIndex, obj.history);
             summary.runDirs = arrayfun(@(x) string(x.runDir), obj.history, 'UniformOutput', false);
 
-            outDir = obj.cfg.storage.rootDir;
+            outDir = obj.resolveSweepBaseDirFromHistory();
+            outDir = fullfile(outDir, 'sweep_state');
             if ~exist(outDir, 'dir')
                 mkdir(outDir);
             end
@@ -611,6 +612,35 @@ classdef Brain < handle
             end
 
             % Fallback: mirror acquisition folder strategy if enabled.
+            if isfield(obj.cfg, 'storage') && isfield(obj.cfg.storage, 'createDateFolder') && ...
+                    logical(obj.cfg.storage.createDateFolder)
+                dateDir = string(datetime('today', 'Format', 'yyyy-MM-dd'));
+                sweepBaseDir = fullfile(rootDir, dateDir);
+            else
+                sweepBaseDir = rootDir;
+            end
+        end
+
+        function sweepBaseDir = resolveSweepBaseDirFromHistory(obj)
+            rootDir = string(obj.cfg.storage.rootDir);
+            if strlength(rootDir) == 0
+                sweepBaseDir = rootDir;
+                return;
+            end
+
+            % Prefer the parent (date folder) of the most recent run directory.
+            if ~isempty(obj.history)
+                lastRunDir = string(obj.history(end).runDir);
+                if strlength(lastRunDir) > 0
+                    parentDir = fileparts(char(lastRunDir));
+                    if ~isempty(parentDir)
+                        sweepBaseDir = string(parentDir);
+                        return;
+                    end
+                end
+            end
+
+            % Fallback mirrors acquisition folder strategy.
             if isfield(obj.cfg, 'storage') && isfield(obj.cfg.storage, 'createDateFolder') && ...
                     logical(obj.cfg.storage.createDateFolder)
                 dateDir = string(datetime('today', 'Format', 'yyyy-MM-dd'));
