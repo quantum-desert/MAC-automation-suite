@@ -12,11 +12,11 @@ function visualize_best_dataset_tool(dataRoot, resultsJson)
 if nargin < 1 || strlength(string(dataRoot)) == 0
     dataRoot = '/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/4-20-26/2026-04-20_pre_opt_det';
 end
+if nargin < 2 || strlength(string(resultsJson)) == 0
+    resultsJson = '/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/4-20-26/snr_optimization_results_4-20-26.json';
+end
 
 dataRoot = char(string(dataRoot));
-if nargin < 2 || strlength(string(resultsJson)) == 0
-    resultsJson = guessResultsJsonForDataRoot(dataRoot);
-end
 resultsJson = char(string(resultsJson));
 
 runInfo = discoverRuns(dataRoot);
@@ -24,7 +24,7 @@ if isempty(runInfo.indices)
     error('No run_* folders found in %s', dataRoot);
 end
 
-resultsInfo = loadResultsInfo(resultsJson, dataRoot);
+resultsInfo = loadResultsInfo(resultsJson);
 bestRuns = resultsInfo.bestRuns;
 
 constants = defaultConstantsLocal();
@@ -190,12 +190,15 @@ if resultMeta.hasSettings
         info.computeMode = 'optimized';
         info.computeReason = 'replayed optimizer method from JSON';
     catch ME
-        error('Optimized replay failed for run %d %s: %s', runIdx, channelName, ME.message);
+        warning('Optimized replay failed for run %d %s (%s). Falling back to legacy compute.', runIdx, channelName, ME.message);
+        info = computeChannelViewLegacy(runDir, runIdx, channelName, map, constants, resultMeta);
+        info.computeMode = 'legacy_fallback';
+        info.computeReason = sprintf('optimized replay failed: %s', ME.message);
     end
 else
-    error(['Missing optimized method metadata for run %d %s. ' ...
-        'Provide the matching optimization JSON for this dataset to visualize optimized data.'], ...
-        runIdx, channelName);
+    info = computeChannelViewLegacy(runDir, runIdx, channelName, map, constants, resultMeta);
+    info.computeMode = 'legacy';
+    info.computeReason = 'missing optimizer method metadata in JSON';
 end
 
 info.jsonSNRe = resultMeta.jsonSNRe;
@@ -208,6 +211,14 @@ if isfinite(info.computedSNRe) && isfinite(info.SNR_C)
     info.computedMargin = info.computedSNRe - info.SNR_C;
 else
     info.computedMargin = NaN;
+end
+
+% Use JSON as canonical display reference when available.
+if isfinite(info.jsonSNRe)
+    info.SNRe = info.jsonSNRe;
+end
+if isfinite(info.jsonSNR_C)
+    info.SNR_C = info.jsonSNR_C;
 end
 
 if isfinite(info.jsonSNRe) && isfinite(info.computedSNRe)
@@ -307,10 +318,6 @@ info.A_homo = A_homo_centered;
 info.t_mod = t_mod;
 info.A_mod_d = A_mod_d;
 info.A_homo_filt = A_homo_filt;
-info.t_proc = t_homo;
-info.A_homo_proc = A_homo_filt;
-info.t_mod_proc = t_mod;
-info.A_mod_proc = A_mod_d;
 
 info.dst = dst;
 info.dsA = dsA;
@@ -323,9 +330,6 @@ info.scanSNR = scanSNR;
 info.bestPhase = bestPhase;
 info.SNRe = SNRe;
 info.SNR_C = SNR_C;
-info.trimMode = 'none';
-info.trimPoints = 0;
-info.trimmedDownsampledPoints = numel(dsA);
 
 info.fft_mod = fft_mod;
 info.fft_filt = fft_filt;
@@ -388,17 +392,9 @@ SNRe = evSelected.snre_asym_xp;
 SNR_C = resolveClassicalLimit(resultMeta, runDir, channelName);
 
 sample_idx = (selectedPhase+1):M:n_raw;
-dst_full = base_time(sample_idx);
-dsA_full = sig_lag(sample_idx);
-ds_mod_full = evSelected.bits;
-
-[dst, dsA, ds_mod] = applyTrimToDownsampled(dst_full, dsA_full, ds_mod_full, settings.trimMode, settings.trimPoints);
-Xp = dsA(ds_mod);
-Xm = dsA(~ds_mod);
-if isempty(Xp) || std(Xp) == 0
-    error('Trimmed segment produced invalid class statistics for run %d %s', runIdx, channelName);
-end
-SNRe = (abs(mean(Xp)-mean(Xm)))^2 / (4 * std(Xp)^2 + 1e-18);
+dst = base_time(sample_idx);
+dsA = sig_lag(sample_idx);
+ds_mod = evSelected.bits;
 
 fft_mod = fftCalc(A_mod, Fs);
 fft_filt = fftCalc(sig_proc, Fs);
@@ -417,25 +413,18 @@ info.A_homo = A_homo - mean(A_homo);
 info.t_mod = t_mod;
 info.A_mod_d = normalizeModForPlot(A_mod);
 info.A_homo_filt = sig_proc;
-info.t_proc = base_time;
-info.A_homo_proc = sig_lag;
-info.t_mod_proc = base_time;
-info.A_mod_proc = normalizeModForPlot(mod_lag);
 
 info.dst = dst;
 info.dsA = dsA;
 info.ds_mod = ds_mod;
-info.Xp = Xp;
-info.Xm = Xm;
+info.Xp = evSelected.xp;
+info.Xm = evSelected.xm;
 
 info.scanPhase = scanPhase;
 info.scanSNR = scanMetric;
 info.bestPhase = selectedPhase;
 info.SNRe = SNRe;
 info.SNR_C = SNR_C;
-info.trimMode = settings.trimMode;
-info.trimPoints = settings.trimPoints;
-info.trimmedDownsampledPoints = numel(dsA);
 
 info.fft_mod = fft_mod;
 info.fft_filt = fft_filt;
@@ -449,49 +438,14 @@ axScan = tabState.axScan;
 
 cla(axTime); cla(axHist); cla(axFFT); cla(axScan);
 
-nDsPreview = min(50, numel(info.dst));
-if nDsPreview > 0
-    dsX = info.dst(1:nDsPreview);
-    dsY = info.dsA(1:nDsPreview);
-    dt = 0;
-    if numel(info.t_proc) > 1
-        dt = median(abs(diff(info.t_proc)));
-    end
-    if ~isfinite(dt) || dt <= 0
-        dt = 1e-6;
-    end
-    span = max(dsX) - min(dsX);
-    pad = max(40 * dt, 0.25 * max(span, dt));
-    xLo = min(dsX) - pad;
-    xHi = max(dsX) + pad;
-else
-    dsX = [];
-    dsY = [];
-    xLo = -inf;
-    xHi = inf;
-end
+lim = min(1000, numel(info.t_homo));
+lim_ds = min(max(1, floor(lim / max(1, info.report.M))), numel(info.dst));
 
-idxRaw = find(info.t_homo >= xLo & info.t_homo <= xHi);
-idxProc = find(info.t_proc >= xLo & info.t_proc <= xHi);
-idxMod = find(info.t_mod_proc >= xLo & info.t_mod_proc <= xHi);
-
-if numel(idxRaw) < 20
-    idxRaw = 1:min(1000, numel(info.t_homo));
-end
-if numel(idxProc) < 20
-    idxProc = 1:min(1000, numel(info.t_proc));
-end
-if numel(idxMod) < 20
-    idxMod = 1:min(1000, numel(info.t_mod_proc));
-end
-
-plot(axTime, info.t_homo(idxRaw), info.A_homo(idxRaw), 'LineWidth', 1.5, 'DisplayName', 'Homodyne (Raw)');
+plot(axTime, info.t_homo(1:lim), info.A_homo(1:lim), 'LineWidth', 1.5, 'DisplayName', 'Homodyne (Raw)');
 hold(axTime, 'on');
-plot(axTime, info.t_proc(idxProc), 5*info.A_homo_proc(idxProc), 'LineWidth', 1.5, 'DisplayName', 'Homodyne (Processed x5)');
-plot(axTime, info.t_mod_proc(idxMod), 0.5*double(info.A_mod_proc(idxMod)), 'LineWidth', 1.5, 'DisplayName', 'Modulation (normalized/2)');
-if ~isempty(dsX)
-    scatter(axTime, dsX, 5*dsY, 14, 'm', 'filled', 'DisplayName', 'Downsampled (x5)');
-end
+plot(axTime, info.t_homo(1:lim), 5*info.A_homo_filt(1:lim), 'LineWidth', 1.5, 'DisplayName', 'Homodyne (Processed x5)');
+plot(axTime, info.t_mod(1:lim), 0.5*double(info.A_mod_d(1:lim)), 'LineWidth', 1.5, 'DisplayName', 'Modulation (normalized/2)');
+scatter(axTime, info.dst(1:lim_ds), 5*info.dsA(1:lim_ds), 14, 'm', 'filled', 'DisplayName', 'Downsampled (x5)');
 xlabel(axTime, 'Time (s)');
 ylabel(axTime, 'Amplitude (V)');
 title(axTime, sprintf('%s Time Domain (run %05d)', channelName, runIdx));
@@ -504,7 +458,7 @@ xline(axHist, mean(info.Xp), '--', 'DisplayName', '\mu^+');
 xline(axHist, mean(info.Xm), '--', 'DisplayName', '\mu^-');
 xlabel(axHist, 'Amplitude (V)');
 ylabel(axHist, 'Counts');
-title(axHist, sprintf('%s Histogram (SNRe = %.4f, trim=%s:%d)', channelName, info.SNRe, info.trimMode, info.trimPoints));
+title(axHist, sprintf('%s Histogram (SNRe = %.4f)', channelName, info.SNRe));
 grid(axHist, 'on'); legend(axHist, 'Location', 'best');
 
 plot(axFFT, info.fft_mod(:,1), info.fft_mod(:,2), 'LineWidth', 1.3, 'DisplayName', 'Modulation');
@@ -545,8 +499,7 @@ end
 if isfinite(info.computedMargin)
     stats = sprintf('%s | computed margin = %+0.6f', stats, info.computedMargin);
 end
-stats = sprintf('%s | phase = %d | M = %d | trim=%s:%d | n_trim=%d', ...
-    stats, info.bestPhase, info.report.M, info.trimMode, info.trimPoints, info.trimmedDownsampledPoints);
+stats = sprintf('%s | phase = %d | M = %d', stats, info.bestPhase, info.report.M);
 
 if info.hasJsonReference && isfinite(info.jsonSNRe)
     stats = sprintf('%s | JSON SNRe = %.6f', stats, info.jsonSNRe);
@@ -622,11 +575,7 @@ cmap.S1 = struct('homodyneChannel', 2, 'modChannel', 1);
 cmap.S2 = struct('homodyneChannel', 3, 'modChannel', 4);
 end
 
-function resultsInfo = loadResultsInfo(resultsJson, dataRoot)
-if nargin < 2
-    dataRoot = '';
-end
-
+function resultsInfo = loadResultsInfo(resultsJson)
 resultsInfo = struct();
 resultsInfo.available = false;
 resultsInfo.bestRuns = struct('S1', 20, 'S2', 81);
@@ -646,19 +595,6 @@ catch ME
     return;
 end
 
-if isfield(results, 'root') && strlength(string(dataRoot)) > 0
-    jsonRoot = char(string(results.root));
-    if ~pathsEquivalent(jsonRoot, dataRoot)
-        jsonRootExists = exist(jsonRoot, 'dir') == 7;
-        sameDatasetName = strcmp(datasetLeafName(jsonRoot), datasetLeafName(dataRoot));
-        if ~(~jsonRootExists && sameDatasetName)
-            warning('Results JSON root does not match selected dataRoot. JSON root: %s | dataRoot: %s', jsonRoot, dataRoot);
-            return;
-        end
-        warning('Results JSON root path is stale, but dataset folder name matches. Proceeding with current dataRoot.');
-    end
-end
-
 resultsInfo.available = true;
 
 if isfield(results, 'best_by_channel')
@@ -671,16 +607,9 @@ if isfield(results, 'best_by_channel')
     end
 end
 
-if isfield(results, 'per_run')
-    if isstruct(results.per_run)
-        rows = num2cell(results.per_run);
-    elseif iscell(results.per_run)
-        rows = results.per_run;
-    else
-        rows = {};
-    end
-    for k = 1:numel(rows)
-        row = rows{k};
+if isfield(results, 'per_run') && isstruct(results.per_run)
+    for k = 1:numel(results.per_run)
+        row = results.per_run(k);
         if ~isfield(row, 'run_index')
             continue;
         end
@@ -724,12 +653,6 @@ if isfield(resultsInfo.byRun, key)
         if isfield(ch, 'method')
             meta.methodString = char(string(ch.method));
         end
-        if isfield(ch, 'trim_mode')
-            meta.settings.trimMode = char(string(ch.trim_mode));
-        end
-        if isfield(ch, 'trim_points')
-            meta.settings.trimPoints = max(0, round(double(ch.trim_points)));
-        end
     end
 end
 
@@ -747,12 +670,6 @@ if isfield(resultsInfo.bestByChannel, channelName)
         end
         if isempty(meta.methodString) && isfield(b, 'method')
             meta.methodString = char(string(b.method));
-        end
-        if isfield(b, 'trim_mode')
-            meta.settings.trimMode = char(string(b.trim_mode));
-        end
-        if isfield(b, 'trim_points')
-            meta.settings.trimPoints = max(0, round(double(b.trim_points)));
         end
 
         settings = settingsFromBestChannelRecord(b);
@@ -800,8 +717,6 @@ s.metric = '';
 s.M = NaN;
 s.phase = NaN;
 s.lag = NaN;
-s.trimMode = 'none';
-s.trimPoints = 0;
 s.methodString = '';
 end
 
@@ -835,12 +750,6 @@ end
 if isfield(rec, 'lag')
     settings.lag = double(rec.lag);
 end
-if isfield(rec, 'trim_mode')
-    settings.trimMode = char(string(rec.trim_mode));
-end
-if isfield(rec, 'trim_points')
-    settings.trimPoints = max(0, round(double(rec.trim_points)));
-end
 if isfield(rec, 'method')
     settings.methodString = char(string(rec.method));
 end
@@ -869,21 +778,7 @@ if strlength(string(methodString)) == 0
     return;
 end
 
-fullText = char(string(methodString));
-trimTok = regexp(fullText, 'trim\s*=\s*([a-zA-Z_]+)\s*:\s*([-+]?\d+)', 'tokens', 'once');
-if ~isempty(trimTok)
-    settings.trimMode = lower(strtrim(trimTok{1}));
-    settings.trimPoints = max(0, round(str2double(trimTok{2})));
-end
-
-fixedTok = regexp(fullText, 'fixed\((.*)\)', 'tokens', 'once');
-if ~isempty(fixedTok)
-    parseText = fixedTok{1};
-else
-    parseText = fullText;
-end
-
-parts = strsplit(parseText, ';');
+parts = strsplit(char(string(methodString)), ';');
 for i = 1:numel(parts)
     tok = strtrim(parts{i});
     if isempty(tok)
@@ -917,12 +812,6 @@ for i = 1:numel(parts)
             settings.phase = str2double(val);
         case 'lag'
             settings.lag = str2double(val);
-        case 'trim'
-            t = regexp(val, '^([a-zA-Z_]+)\s*:\s*([-+]?\d+)$', 'tokens', 'once');
-            if ~isempty(t)
-                settings.trimMode = lower(strtrim(t{1}));
-                settings.trimPoints = max(0, round(str2double(t{2})));
-            end
         otherwise
             % Ignore unknown tokens for forward compatibility.
     end
@@ -934,41 +823,10 @@ name = lower(strtrim(filterName));
 switch name
     case 'none'
         y = x;
-    case 'fft_lp_0p5rb'
-        y = fftLowpassMask(x, fs, 0.5 * rb);
     case 'fft_lp_0p6rb'
         y = fftLowpassMask(x, fs, 0.6 * rb);
-    case 'fft_lp_0p7rb'
-        y = fftLowpassMask(x, fs, 0.7 * rb);
     case 'fft_lp_0p8rb'
         y = fftLowpassMask(x, fs, 0.8 * rb);
-    case 'fft_lp_0p9rb'
-        y = fftLowpassMask(x, fs, 0.9 * rb);
-    case 'fft_hp_0p05rb'
-        y = fftHighpassMask(x, fs, 0.05 * rb);
-    case 'fft_hp_0p10rb'
-        y = fftHighpassMask(x, fs, 0.10 * rb);
-    case 'fft_band_0p2_1p2rb'
-        y = fftBandpassMask(x, fs, 0.2 * rb, 1.2 * rb);
-    case 'fft_band_0p3_1p5rb'
-        y = fftBandpassMask(x, fs, 0.3 * rb, 1.5 * rb);
-    case 'boxcar_0p5m'
-        y = boxcarByM(x, 0.5, settingsMFromRb(fs, rb));
-    case 'boxcar_1p0m'
-        y = boxcarByM(x, 1.0, settingsMFromRb(fs, rb));
-    case 'boxcar_1p5m'
-        y = boxcarByM(x, 1.5, settingsMFromRb(fs, rb));
-    case 'boxcar_2p0m'
-        y = boxcarByM(x, 2.0, settingsMFromRb(fs, rb));
-    case 'boxcar_1p0m_then_lp_0p9rb'
-        y = boxcarByM(x, 1.0, settingsMFromRb(fs, rb));
-        y = fftLowpassMask(y, fs, 0.9 * rb);
-    case 'hp_0p05rb_then_boxcar_1p0m'
-        y = fftHighpassMask(x, fs, 0.05 * rb);
-        y = boxcarByM(y, 1.0, settingsMFromRb(fs, rb));
-    case 'band_0p2_1p2rb_then_boxcar_1p0m'
-        y = fftBandpassMask(x, fs, 0.2 * rb, 1.2 * rb);
-        y = boxcarByM(y, 1.0, settingsMFromRb(fs, rb));
     otherwise
         error('Unsupported filter method: %s', filterName);
 end
@@ -979,15 +837,10 @@ name = lower(strtrim(detrendName));
 switch name
     case 'none'
         y = x;
-    case 'movmean_1p5m'
-        win = max(3, round(1.5 * M));
-        y = x - movingAverageSame(x, win);
     case 'movmean_2m'
         win = max(3, round(2 * M));
-        y = x - movingAverageSame(x, win);
-    case 'movmean_2p5m'
-        win = max(3, round(2.5 * M));
-        y = x - movingAverageSame(x, win);
+        kernel = ones(win, 1) / win;
+        y = x - conv(x, kernel, 'same');
     otherwise
         error('Unsupported detrend method: %s', detrendName);
 end
@@ -998,10 +851,6 @@ name = lower(strtrim(clipName));
 switch name
     case 'none'
         y = x;
-    case 'winsor_q0p002'
-        lo = quantileLinear(x, 0.002);
-        hi = quantileLinear(x, 0.998);
-        y = min(max(x, lo), hi);
     case 'winsor_q0p005'
         lo = quantileLinear(x, 0.005);
         hi = quantileLinear(x, 0.995);
@@ -1094,40 +943,6 @@ ev.snre_asym_xp = snre_asym_xp;
 ev.snre_asym_sym = snre_asym_sym;
 end
 
-function [dstOut, dsAOut, dsModOut] = applyTrimToDownsampled(dst, dsA, dsMod, trimMode, trimPoints)
-n = min([numel(dst), numel(dsA), numel(dsMod)]);
-dst = dst(1:n);
-dsA = dsA(1:n);
-dsMod = dsMod(1:n);
-
-modeName = lower(strtrim(char(string(trimMode))));
-k = max(0, round(double(trimPoints)));
-
-switch modeName
-    case {'', 'none'}
-        l = 1;
-        r = n;
-    case 'trim_start'
-        if k >= n
-            error('Invalid trim_start:%d for downsampled length %d', k, n);
-        end
-        l = 1 + k;
-        r = n;
-    case 'trim_end'
-        if k >= n
-            error('Invalid trim_end:%d for downsampled length %d', k, n);
-        end
-        l = 1;
-        r = n - k;
-    otherwise
-        error('Unsupported trim mode: %s', trimMode);
-end
-
-dstOut = dst(l:r);
-dsAOut = dsA(l:r);
-dsModOut = dsMod(l:r);
-end
-
 function y = fftLowpassMask(x, fs, cutoffHz)
 if cutoffHz <= 0
     y = zeros(size(x));
@@ -1141,113 +956,6 @@ f = (0:N-1)' * (fs / N);
 mask = (f <= cutoffHz) | (f >= (fs - cutoffHz));
 ycol = real(ifft(X .* double(mask)));
 y = reshape(ycol, size(x));
-end
-
-function y = fftHighpassMask(x, fs, cutoffHz)
-if cutoffHz <= 0
-    y = x;
-    return;
-end
-
-xcol = x(:);
-N = numel(xcol);
-X = fft(xcol);
-f = (0:N-1)' * (fs / N);
-mask = (f >= cutoffHz) & (f <= (fs - cutoffHz));
-ycol = real(ifft(X .* double(mask)));
-y = reshape(ycol, size(x));
-end
-
-function y = fftBandpassMask(x, fs, loHz, hiHz)
-if hiHz <= 0 || hiHz <= loHz
-    y = zeros(size(x));
-    return;
-end
-
-xcol = x(:);
-N = numel(xcol);
-X = fft(xcol);
-f = (0:N-1)' * (fs / N);
-maskPos = (f >= loHz) & (f <= hiHz);
-maskNeg = (f >= (fs - hiHz)) & (f <= (fs - loHz));
-mask = maskPos | maskNeg;
-ycol = real(ifft(X .* double(mask)));
-y = reshape(ycol, size(x));
-end
-
-function y = movingAverageSame(x, win)
-kernel = ones(win, 1) / win;
-y = conv(x, kernel, 'same');
-end
-
-function y = boxcarByM(x, mult, M)
-win = max(2, round(mult * M));
-y = movingAverageSame(x, win);
-end
-
-function M = settingsMFromRb(fs, rb)
-M = max(4, round(fs / rb));
-end
-
-function tf = pathsEquivalent(a, b)
-tf = strcmp(normalizePathForCompare(a), normalizePathForCompare(b));
-end
-
-function p = normalizePathForCompare(pathIn)
-p = char(string(pathIn));
-p = strtrim(p);
-if isempty(p)
-    return;
-end
-p = strrep(p, '\', '/');
-while numel(p) > 1 && p(end) == '/'
-    p(end) = [];
-end
-if ispc
-    p = lower(p);
-end
-end
-
-function name = datasetLeafName(pathIn)
-s = normalizePathForCompare(pathIn);
-parts = regexp(s, '/', 'split');
-parts = parts(~cellfun(@isempty, parts));
-if isempty(parts)
-    name = '';
-else
-    name = parts{end};
-end
-end
-
-function resultsJson = guessResultsJsonForDataRoot(dataRoot)
-datasetName = char(string(regexp(dataRoot, '[^/\\]+$', 'match', 'once')));
-parentDir = fileparts(dataRoot);
-
-patPrimary = fullfile(parentDir, sprintf('snr_optimization_results_*%s*.json', datasetName));
-matches = dir(patPrimary);
-if ~isempty(matches)
-    [~, k] = max([matches.datenum]);
-    resultsJson = fullfile(matches(k).folder, matches(k).name);
-    return;
-end
-
-patParent = fullfile(parentDir, 'snr_optimization_results_*.json');
-matches = dir(patParent);
-if ~isempty(matches)
-    [~, k] = max([matches.datenum]);
-    resultsJson = fullfile(matches(k).folder, matches(k).name);
-    return;
-end
-
-patLocal = fullfile(dataRoot, 'snr_optimization_results_*.json');
-matches = dir(patLocal);
-if ~isempty(matches)
-    [~, k] = max([matches.datenum]);
-    resultsJson = fullfile(matches(k).folder, matches(k).name);
-    return;
-end
-
-error('Could not auto-discover optimization JSON for dataRoot %s. Provide resultsJson explicitly.', dataRoot);
 end
 
 function qv = quantileLinear(x, q)
