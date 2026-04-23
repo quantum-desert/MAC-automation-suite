@@ -32,6 +32,7 @@ tank_r.A_homo_filt = filtfilt(b,a,tank_r.A_homo);
 % tank_r.A_homo_filt = filter(b,a,tank_r.A_homo_filt);
 
 else
+    disp("boxcar");
 % apply boxcar filter -> spectrally matched filter
 haf=ones(1, tank_r.report.M) / (tank_r.report.M);     % moving avg. boxcar filter
 tank_r.A_homo_filt = filtfilt(haf,1,tank_r.A_homo); % apply filter
