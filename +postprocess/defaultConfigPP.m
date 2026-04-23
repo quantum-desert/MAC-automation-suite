@@ -23,8 +23,9 @@ cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
 % Default behavior: use each channel's own Rb for mode counting.
 % Optional override: set useSharedRbForModes=true to force a shared base Rb.
 cfg.theory = struct();
+
 cfg.theory.useSharedRbForModes = false;
-cfg.theory.baseRbHz = 4e3;
+cfg.theory.baseRbHz = 16e3;
 
 cfg.processing = struct();
 cfg.processing.shorten = 1;
@@ -33,7 +34,7 @@ cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
 
 % 1010 versus PN15 mod selection here
-cfg.processing.deterministic = false;
+cfg.processing.deterministic = true;
 % ----
 
 cfg.processing.show_SNR=false;

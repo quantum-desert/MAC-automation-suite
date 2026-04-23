@@ -41,7 +41,7 @@ end
 
 
 % Configure the sweep timer here
-hours=1;
+hours=3;
 minutes=60*hours;
 cfg.brain.runDurationSeconds = floor(60*minutes);
 cfg.brain.pauseBetweenRunsSeconds = 0;
@@ -70,6 +70,7 @@ cfg.postprocess.processing.deterministic = true;
 
 % Optional per-channel overrides:
 % bit rate:
+
 cfg.postprocess.theory.useSharedRbForModes = false; % use channel-specific mode counts
 cfg.postprocess.constantsByChannel.S1.Rb = 8e3;
 cfg.postprocess.constantsByChannel.S2.Rb = 16e3;
