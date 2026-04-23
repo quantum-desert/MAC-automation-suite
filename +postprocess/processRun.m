@@ -31,8 +31,8 @@ end
 constants_theory = cfg.constants;
 constants_theory.Rb = theoryRbHz;
 
-tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1, processing_S1.shorten);
-tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2, processing_S2.shorten);
+tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1);
+tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2);
 
 tank_S1 = postprocess.matched_downsample(constants_S1, tank_S1, processing_S1.deterministic, processing_S1.show_SNR);
 tank_S2 = postprocess.matched_downsample(constants_S2, tank_S2, processing_S2.deterministic, processing_S2.show_SNR);
@@ -119,9 +119,6 @@ if ~isfield(p, 'deterministic')
 end
 if ~isfield(p, 'makePlots')
     p.makePlots = false;
-end
-if ~isfield(p, 'shorten')
-    p.shorten = 1;
 end
 if ~isfield(p, 'saveProcessedMat')
     p.saveProcessedMat = true;

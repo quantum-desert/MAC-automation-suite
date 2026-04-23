@@ -26,7 +26,6 @@ cfg.theory = struct();
 cfg.theory.baseRbHz = 4e3;
 
 cfg.processing = struct();
-cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;

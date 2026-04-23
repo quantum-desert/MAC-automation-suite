@@ -48,7 +48,6 @@ cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 
 % control plot output
 cfg.postprocess.processing.makePlots = true;
-cfg.postprocess.processing.shorten = 1;
 cfg.postprocess.processing.show_SNR = true;
 
 
@@ -58,18 +57,16 @@ cfg.postprocess.processing.deterministic = true;
 
 % Optional per-channel overrides:
 % bit rate:
-% cfg.postprocess.constantsByChannel.S1.Rb = 16e3;
-% cfg.postprocess.constantsByChannel.S2.Rb = 12e3;
 % theory mode-count basis for SNR_C/SNR_Q (shared across channels):
 % cfg.postprocess.theory.baseRbHz = 4e3;
+cfg.postprocess.constantsByChannel.S1.Rb = 8e3;
+cfg.postprocess.constantsByChannel.S2.Rb = 16e3;
 %
 % processing knobs:
-% cfg.postprocess.processingByChannel.S1.deterministic = true;
-% cfg.postprocess.processingByChannel.S2.deterministic = true;
-% cfg.postprocess.processingByChannel.S1.show_SNR = true;
-% cfg.postprocess.processingByChannel.S2.show_SNR = true;
-% cfg.postprocess.processingByChannel.S1.shorten = 1;
-% cfg.postprocess.processingByChannel.S2.shorten = 1;
+cfg.postprocess.processingByChannel.S1.deterministic = true;
+cfg.postprocess.processingByChannel.S2.deterministic = true;
+cfg.postprocess.processingByChannel.S1.show_SNR = true;
+cfg.postprocess.processingByChannel.S2.show_SNR = true;
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 
