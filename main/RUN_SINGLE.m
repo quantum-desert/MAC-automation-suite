@@ -49,12 +49,25 @@ cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 % control plot output
 cfg.postprocess.processing.makePlots = true;
 cfg.postprocess.processing.shorten = 1;
-cfg.postprocess.processing.showSNR = true;
+cfg.postprocess.processing.show_SNR = true;
 
 
 % 1010 versus PN15 mod selection here
 cfg.postprocess.processing.deterministic = true;
 % ----
+
+% Optional per-channel overrides:
+% bit rate:
+% cfg.postprocess.constantsByChannel.S1.Rb = 16e3;
+% cfg.postprocess.constantsByChannel.S2.Rb = 12e3;
+%
+% processing knobs:
+% cfg.postprocess.processingByChannel.S1.deterministic = true;
+% cfg.postprocess.processingByChannel.S2.deterministic = true;
+% cfg.postprocess.processingByChannel.S1.show_SNR = true;
+% cfg.postprocess.processingByChannel.S2.show_SNR = true;
+% cfg.postprocess.processingByChannel.S1.shorten = 1;
+% cfg.postprocess.processingByChannel.S2.shorten = 1;
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 
@@ -62,4 +75,3 @@ history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 % load gong;
 % sound(y,Fs);
 % system('powershell -c (New-Object Media.SoundPlayer ''C:\Windows\Media\notify.wav'').PlaySync()');
-

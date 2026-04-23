@@ -13,6 +13,12 @@ cfg.recordName = "scope";
 cfg.constants = postprocess.defaultConstants();
 cfg.phys_constants = postprocess.defaultPhysConstants();
 
+% Optional per-channel constant overrides (applied on top of cfg.constants).
+% Primary use: independent bit-rate per channel via .Rb.
+cfg.constantsByChannel = struct();
+cfg.constantsByChannel.S1 = struct('Rb', cfg.constants.Rb);
+cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
+
 cfg.processing = struct();
 cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;
@@ -24,6 +30,12 @@ cfg.processing.deterministic = false;
 % ----
 
 cfg.processing.show_SNR=false;
+
+% Optional per-channel processing overrides (applied on top of cfg.processing).
+% Leave empty to use shared/global processing settings.
+cfg.processingByChannel = struct();
+cfg.processingByChannel.S1 = struct();
+cfg.processingByChannel.S2 = struct();
 
 cfg.physics = struct();
 P_b =2345e-6; % noise power (W)

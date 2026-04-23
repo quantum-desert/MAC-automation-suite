@@ -584,11 +584,17 @@ classdef Brain < handle
             if isfield(pp, 'constants')
                 ppRecord.constants = skull.Brain.toJsonSafe(pp.constants);
             end
+            if isfield(pp, 'constantsByChannel')
+                ppRecord.constantsByChannel = skull.Brain.toJsonSafe(pp.constantsByChannel);
+            end
             if isfield(pp, 'phys_constants')
                 ppRecord.phys_constants = skull.Brain.toJsonSafe(pp.phys_constants);
             end
             if isfield(pp, 'processing')
                 ppRecord.processing = skull.Brain.toJsonSafe(pp.processing);
+            end
+            if isfield(pp, 'processingByChannel')
+                ppRecord.processingByChannel = skull.Brain.toJsonSafe(pp.processingByChannel);
             end
             if isfield(pp, 'channels')
                 ppRecord.channels = skull.Brain.toJsonSafe(pp.channels);

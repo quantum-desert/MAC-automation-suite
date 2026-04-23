@@ -6,27 +6,36 @@ function result = processRun(runFolder, cfg)
 % optional visualize -> build_physics -> display report.
 
 if nargin < 2 || isempty(cfg)
-    cfg = postprocess.defaultConfig(runFolder);
+    cfg = postprocess.defaultConfigPP(runFolder);
 else
     cfg.runFolder = string(runFolder);
 end
 
 [fnames_S1, fnames_S2] = postprocess.buildRunFilenames(cfg);
 
-shorten = cfg.processing.shorten;
-tank_S1 = postprocess.preprocess_data(fnames_S1,cfg.constants,shorten);
-tank_S2 = postprocess.preprocess_data(fnames_S2,cfg.constants,shorten);
+procGlobal = normalizeProcessingStruct(cfg.processing);
 
-tank_S1 = postprocess.matched_downsample(cfg.constants,tank_S1,cfg.processing.deterministic,cfg.processing.show_SNR);
-tank_S2 = postprocess.matched_downsample(cfg.constants,tank_S2,cfg.processing.deterministic,cfg.processing.show_SNR);
+constants_S1 = applyChannelOverrides(cfg.constants, cfg, 'constantsByChannel', 'S1');
+constants_S2 = applyChannelOverrides(cfg.constants, cfg, 'constantsByChannel', 'S2');
 
-if cfg.processing.makePlots
-    postprocess.visualize_v2(tank_S1,cfg.constants);
-    postprocess.visualize_v2(tank_S2,cfg.constants);
+processing_S1 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S1'));
+processing_S2 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S2'));
+
+tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1, processing_S1.shorten);
+tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2, processing_S2.shorten);
+
+tank_S1 = postprocess.matched_downsample(constants_S1, tank_S1, processing_S1.deterministic, processing_S1.show_SNR);
+tank_S2 = postprocess.matched_downsample(constants_S2, tank_S2, processing_S2.deterministic, processing_S2.show_SNR);
+
+if processing_S1.makePlots
+    postprocess.visualize_v2(tank_S1, constants_S1);
+end
+if processing_S2.makePlots
+    postprocess.visualize_v2(tank_S2, constants_S2);
 end
 
-phys1 = postprocess.build_physics(cfg.physics.S1,cfg.phys_constants,cfg.constants);
-phys2 = postprocess.build_physics(cfg.physics.S2,cfg.phys_constants,cfg.constants);
+phys1 = postprocess.build_physics(cfg.physics.S1, cfg.phys_constants, constants_S1);
+phys2 = postprocess.build_physics(cfg.physics.S2, cfg.phys_constants, constants_S2);
 summary = postprocess.displayReport(tank_S1, tank_S2, phys1, phys2);
 
 pp = struct();
@@ -51,12 +60,62 @@ result.phys1 = phys1;
 result.phys2 = phys2;
 result.summary = summary;
 result.pp = pp;
+result.channelConfig = struct('S1', struct('constants', constants_S1, 'processing', processing_S1), ...
+                              'S2', struct('constants', constants_S2, 'processing', processing_S2));
 
-if cfg.processing.saveProcessedMat
+if procGlobal.saveProcessedMat
     save(fullfile(runFolder, 'processed.mat'), 'result', '-v7.3');
 end
 
-if cfg.processing.saveSummaryJson
+if procGlobal.saveSummaryJson
     postprocess.writeSummaryJson(fullfile(runFolder, 'processed_summary.json'), summary);
+end
+end
+
+function out = applyChannelOverrides(baseStruct, cfg, overrideFieldName, channelName)
+out = baseStruct;
+if ~isfield(cfg, overrideFieldName)
+    return;
+end
+
+channelOverrides = cfg.(overrideFieldName);
+if ~isstruct(channelOverrides) || ~isfield(channelOverrides, channelName)
+    return;
+end
+
+ov = channelOverrides.(channelName);
+if ~isstruct(ov)
+    return;
+end
+
+fields = fieldnames(ov);
+for k = 1:numel(fields)
+    out.(fields{k}) = ov.(fields{k});
+end
+end
+
+function p = normalizeProcessingStruct(p)
+% Backward-compatibility alias: allow showSNR or show_SNR.
+if isfield(p, 'showSNR') && ~isfield(p, 'show_SNR')
+    p.show_SNR = p.showSNR;
+end
+
+if ~isfield(p, 'show_SNR')
+    p.show_SNR = false;
+end
+if ~isfield(p, 'deterministic')
+    p.deterministic = false;
+end
+if ~isfield(p, 'makePlots')
+    p.makePlots = false;
+end
+if ~isfield(p, 'shorten')
+    p.shorten = 1;
+end
+if ~isfield(p, 'saveProcessedMat')
+    p.saveProcessedMat = true;
+end
+if ~isfield(p, 'saveSummaryJson')
+    p.saveSummaryJson = true;
 end
 end
