@@ -48,9 +48,7 @@ cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 
 % control plot output
 cfg.postprocess.processing.makePlots = true;
-cfg.postprocess.processing.shorten = 1;
 
 history = lecroy.runSingle(cfg,session); %#ok<NASGU>
 
 l
-

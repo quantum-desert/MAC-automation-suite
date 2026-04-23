@@ -30,11 +30,6 @@ tank.t_mod = modulation(:,1);
 tank.A_mod = modulation(:,2);
 
 % pre-processing
-% % truncate dataset
-% len = length(tank.t_homo);
-% tank.t_homo = tank.t_homo(1:floor(len*shorten));
-% tank.A_homo = tank.A_homo(1:floor(len*shorten));
-% tank.A_mod = tank.A_mod(1:floor(len*shorten));
 
 % digitize modulation
 tank.A_mod_d = (tank.A_mod)./max(tank.A_mod);

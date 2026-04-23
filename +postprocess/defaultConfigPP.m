@@ -28,7 +28,6 @@ cfg.theory.useSharedRbForModes = false;
 cfg.theory.baseRbHz = 16e3;
 
 cfg.processing = struct();
-cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
