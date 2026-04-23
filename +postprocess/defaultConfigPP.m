@@ -23,7 +23,7 @@ cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
 % This Rb is used for classical/theory mode counting in build_physics,
 % independent of channel-specific processing bit rates.
 cfg.theory = struct();
-cfg.theory.baseRbHz = 8e3;
+cfg.theory.baseRbHz = 16e3;
 
 cfg.processing = struct();
 cfg.processing.makePlots = 1;
@@ -31,7 +31,7 @@ cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
 
 % 1010 versus PN15 mod selection here
-cfg.processing.deterministic = false;
+cfg.processing.deterministic = true;
 % ----
 
 cfg.processing.show_SNR=false;
