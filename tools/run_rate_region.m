@@ -21,7 +21,7 @@ plot_fig_path = "";    % leave empty to use default naming
 % Plot toggles
 show_ea_outer_bound = false;
 show_experimental_joint_region = true;
-show_coherent_constraint_lines = true;
+show_coherent_constraint_lines = true; % plot only the coherent diagonal outer-bound line
 show_figure = true; % open the figure window when running interactively
 
 % MI estimator
@@ -49,9 +49,9 @@ s2_selector_batch = 4;
 s2_selector_run = NaN;
 
 % Receiver overlay controls (Fig.8-style proxy overlays)
-receiver_overlay_enable = true;
-receiver_show_opar = true;
-receiver_show_pcr = true;
+receiver_overlay_enable = false;
+receiver_show_opar = false;
+receiver_show_pcr = false;
 receiver_alpha_source = "auto_from_data"; % "auto_from_data" | "manual"
 receiver_alpha_base = 0.08;
 receiver_alpha_opar_factor = 0.75;
@@ -61,6 +61,19 @@ receiver_alpha_pcr_factor = 1.10;
 nb_merge_mode = "average"; % "average" | "s1" | "s2" | "min" | "max"
 tau_mode = "sum_kappa";    % "sum_kappa" | "explicit"
 tau_override = NaN;         % required when tau_mode="explicit"
+
+% Secondary overlay scenario (second MI-best point set)
+secondary_enable = true;
+secondary_label = "4-22 batch 2";
+secondary_date = "4-22-26";
+secondary_batch_ids = [2];
+secondary_json_mode = "auto";
+secondary_s1_selector_mode = "best";
+secondary_s1_selector_batch = 2;
+secondary_s1_selector_run = NaN;
+secondary_s2_selector_mode = "best";
+secondary_s2_selector_batch = 2;
+secondary_s2_selector_run = NaN;
 
 %% Build options struct
 opts = struct();
@@ -113,6 +126,18 @@ opts.receiverOverlay = struct( ...
     'alphaPCRFactor', receiver_alpha_pcr_factor ...
 );
 
+opts.secondaryOverlay = struct( ...
+    'enable', logical(secondary_enable), ...
+    'label', char(secondary_label), ...
+    'date', char(secondary_date), ...
+    'batchIds', secondary_batch_ids, ...
+    'resultsMode', char(secondary_json_mode), ...
+    'selector', struct( ...
+        'S1', make_selector(secondary_s1_selector_mode, secondary_s1_selector_batch, secondary_s1_selector_run), ...
+        'S2', make_selector(secondary_s2_selector_mode, secondary_s2_selector_batch, secondary_s2_selector_run) ...
+    ) ...
+);
+
 %% Run tool
 tool_dir = fileparts(mfilename('fullpath'));
 addpath(tool_dir);
@@ -137,6 +162,12 @@ fprintf('Eq.8 coherent bounds (bits/use): C1=%.6f | C2=%.6f | Csum=%.6f\n', ...
     summary.bounds.eq8.individual.S1.bits_per_use, ...
     summary.bounds.eq8.individual.S2.bits_per_use, ...
     summary.bounds.eq8.sum.bits_per_use);
+if isfield(summary, 'secondary_overlay') && isfield(summary.secondary_overlay, 'enabled') && summary.secondary_overlay.enabled
+    fprintf('Secondary point (%s): S1 %s run_%05d | S2 %s run_%05d\n', ...
+        summary.secondary_overlay.label, ...
+        summary.secondary_overlay.selected.S1.batchTag, summary.secondary_overlay.selected.S1.run_index, ...
+        summary.secondary_overlay.selected.S2.batchTag, summary.secondary_overlay.selected.S2.run_index);
+end
 fprintf('Plot: %s\n', summary.normalized_rate_region_plot.png_path);
 fprintf('Summary JSON: %s\n\n', opts.outputJsonPath);
 

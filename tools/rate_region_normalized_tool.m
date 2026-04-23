@@ -69,7 +69,12 @@ rep2.normalized = struct( ...
     'rate_over_coherent_rate', rep2.rate_bits_per_sec / max(bounds.eq8.individual.S2.rate_bits_per_sec, eps) ...
 );
 
-plotInfo = plotNormalizedRateRegion(bounds, rep1, rep2, joint, opts);
+secondary = struct('enabled', false);
+if opts.secondaryOverlay.enable
+    secondary = computeScenarioOverlay(opts, opts.secondaryOverlay);
+end
+
+plotInfo = plotNormalizedRateRegion(bounds, rep1, rep2, joint, opts, secondary);
 
 summary = struct();
 summary.generated_utc = char(datetime('now', 'TimeZone', 'UTC', 'Format', "yyyy-MM-dd'T'HH:mm:ss'Z'"));
@@ -85,6 +90,7 @@ summary.bounds = bounds;
 summary.normalization_reference = normRef;
 summary.channels = struct('S1', rep1, 'S2', rep2);
 summary.joint = joint;
+summary.secondary_overlay = secondary;
 summary.normalized_rate_region_plot = plotInfo;
 summary.notes = 'Axes use R1/C1_coh and R2/C2_coh. Best/best_in_batch selector uses maximum HW MI margin per channel. Joint MI uses opts.jointMiEstimator.';
 
@@ -143,6 +149,11 @@ if ~isfield(opts, 'receiverOverlay') || ~isstruct(opts.receiverOverlay)
     opts.receiverOverlay = struct();
 end
 opts.receiverOverlay = normalizeReceiverOverlay(opts.receiverOverlay);
+
+if ~isfield(opts, 'secondaryOverlay') || ~isstruct(opts.secondaryOverlay)
+    opts.secondaryOverlay = struct();
+end
+opts.secondaryOverlay = normalizeSecondaryOverlay(opts.secondaryOverlay);
 
 if ~isfield(opts, 'showEAOuterBound') || isempty(opts.showEAOuterBound)
     opts.showEAOuterBound = true;
@@ -216,6 +227,41 @@ opts.showFigure = logical(opts.showFigure);
 if opts.showFigure && ~usejava('desktop')
     opts.showFigure = false;
 end
+end
+
+function so = normalizeSecondaryOverlay(so)
+if ~isfield(so, 'enable') || isempty(so.enable)
+    so.enable = true;
+end
+if ~isfield(so, 'date') || strlength(string(so.date)) == 0
+    so.date = '4-22-26';
+end
+if ~isfield(so, 'batchIds') || isempty(so.batchIds)
+    so.batchIds = 2;
+end
+if ~isfield(so, 'resultsMode') || strlength(string(so.resultsMode)) == 0
+    so.resultsMode = 'auto';
+end
+if ~isfield(so, 'label') || strlength(string(so.label)) == 0
+    so.label = '4-22 batch 2';
+end
+if ~isfield(so, 'selector') || ~isstruct(so.selector)
+    so.selector = struct();
+end
+if ~isfield(so.selector, 'S1') || ~isstruct(so.selector.S1)
+    so.selector.S1 = struct('mode','best','batchId',NaN,'runIndex',NaN);
+end
+if ~isfield(so.selector, 'S2') || ~isstruct(so.selector.S2)
+    so.selector.S2 = struct('mode','best','batchId',NaN,'runIndex',NaN);
+end
+so.selector.S1 = normalizeSelector(so.selector.S1);
+so.selector.S2 = normalizeSelector(so.selector.S2);
+
+so.enable = logical(so.enable);
+so.date = char(string(so.date));
+so.batchIds = unique(double(so.batchIds), 'stable');
+so.resultsMode = char(lower(string(so.resultsMode)));
+so.label = char(string(so.label));
 end
 
 function ro = normalizeReceiverOverlay(ro)
@@ -506,6 +552,67 @@ cmp.selected = struct( ...
     'trim_mode', selected.trim_mode, ...
     'trim_points', selected.trim_points ...
 );
+end
+
+function ov = computeScenarioOverlay(opts, so)
+ovOpts = opts;
+ovOpts.date = so.date;
+ovOpts.batchIds = so.batchIds;
+ovOpts.resultsMode = so.resultsMode;
+ovOpts.selector = so.selector;
+
+batchDefs = resolveBatchDefs(ovOpts);
+allCandidates = collectChannelCandidates(batchDefs);
+
+selS1 = pickChannelCandidate(allCandidates, 'S1', ovOpts.selector.S1, ovOpts);
+selS2 = pickChannelCandidate(allCandidates, 'S2', ovOpts.selector.S2, ovOpts);
+cmpS1 = compareSelectionToSnreReference(allCandidates, selS1, ovOpts.selector.S1, 'S1');
+cmpS2 = compareSelectionToSnreReference(allCandidates, selS2, ovOpts.selector.S2, 'S2');
+
+obs1 = extractChannelObservations(selS1);
+obs2 = extractChannelObservations(selS2);
+
+commonDuration = min(obs1.nSymbols/obs1.Rb, obs2.nSymbols/obs2.Rb);
+n1 = min(obs1.nSymbols, floor(commonDuration*obs1.Rb));
+n2 = min(obs2.nSymbols, floor(commonDuration*obs2.Rb));
+if n1 < 100 || n2 < 100
+    error('Secondary overlay has too few aligned symbols after synchronization windowing.');
+end
+obs1 = trimObservations(obs1, n1);
+obs2 = trimObservations(obs2, n2);
+
+rep1 = evaluateChannel(obs1, ovOpts);
+rep2 = evaluateChannel(obs2, ovOpts);
+joint = evaluateJointChannel(obs1, obs2, commonDuration, ovOpts);
+
+phys1 = loadChannelPhysics(selS1, 'S1');
+phys2 = loadChannelPhysics(selS2, 'S2');
+model = mergePhysicsModel(phys1, phys2, ovOpts);
+bounds = computePaperBounds(model, rep1.Rb_uses_per_sec, rep2.Rb_uses_per_sec, joint.Rb_uses_per_sec);
+
+rep1.normalized = struct( ...
+    'I_over_coherent_bits_per_use', rep1.mutual_information_bits_per_use / max(bounds.eq8.individual.S1.bits_per_use, eps), ...
+    'rate_over_coherent_rate', rep1.rate_bits_per_sec / max(bounds.eq8.individual.S1.rate_bits_per_sec, eps) ...
+);
+rep2.normalized = struct( ...
+    'I_over_coherent_bits_per_use', rep2.mutual_information_bits_per_use / max(bounds.eq8.individual.S2.bits_per_use, eps), ...
+    'rate_over_coherent_rate', rep2.rate_bits_per_sec / max(bounds.eq8.individual.S2.rate_bits_per_sec, eps) ...
+);
+
+ov = struct();
+ov.enabled = true;
+ov.label = so.label;
+ov.date = ovOpts.date;
+ov.batch_ids = ovOpts.batchIds;
+ov.results_mode = ovOpts.resultsMode;
+ov.selector = ovOpts.selector;
+ov.sync = struct('common_duration_sec', commonDuration, 'n_symbols_S1', n1, 'n_symbols_S2', n2);
+ov.selected = struct('S1', selS1, 'S2', selS2);
+ov.selection_comparison = struct('S1', cmpS1, 'S2', cmpS2);
+ov.physics_model = model;
+ov.bounds = bounds;
+ov.channels = struct('S1', rep1, 'S2', rep2);
+ov.joint = joint;
 end
 
 function sel = selectBestByHwMargin(pool, channelName, opts)
@@ -844,26 +951,36 @@ function b = makeBound(bitsPerMode, modesPerUse, Rb)
 b = struct('bits_per_mode', bitsPerMode, 'bits_per_use', bitsPerMode*modesPerUse, 'rate_bits_per_sec', bitsPerMode*modesPerUse*Rb);
 end
 
-function out = plotNormalizedRateRegion(bounds, rep1, rep2, joint, opts)
+function out = plotNormalizedRateRegion(bounds, rep1, rep2, joint, opts, secondary)
+if nargin < 6 || isempty(secondary)
+    secondary = struct('enabled', false);
+end
+
 coh1 = bounds.eq8.individual.S1.bits_per_use;
 coh2 = bounds.eq8.individual.S2.bits_per_use;
 
 [e8x, e8y] = normalizedCurve(bounds.eq8.individual.S1.bits_per_use, bounds.eq8.individual.S2.bits_per_use, bounds.eq8.sum.bits_per_use, coh1, coh2);
-[e9x, e9y] = normalizedCurve(bounds.eq9.individual.S1.bits_per_use, bounds.eq9.individual.S2.bits_per_use, bounds.eq9.sum_energetic.bits_per_use, coh1, coh2);
-[eax, eay] = normalizedCurve(bounds.eq10.individual.S1.bits_per_use, bounds.eq10.individual.S2.bits_per_use, bounds.eq11.sum.bits_per_use, coh1, coh2);
 [ejx, ejy] = normalizedCurve(rep1.mutual_information_bits_per_use, rep2.mutual_information_bits_per_use, ...
     joint.mutual_information_bits_per_use, coh1, coh2);
-recv = receiverOverlayCurves(bounds, rep1, rep2, joint, opts.receiverOverlay, coh1, coh2);
 
 p1 = rep1.mutual_information_bits_per_use / max(coh1, eps);
 p2 = rep2.mutual_information_bits_per_use / max(coh2, eps);
 
-scale = 1;
-if (rep1.mutual_information_bits_per_use + rep2.mutual_information_bits_per_use) > 0
-    scale = joint.mutual_information_bits_per_use / (rep1.mutual_information_bits_per_use + rep2.mutual_information_bits_per_use);
+hasSecondary = isfield(secondary, 'enabled') && logical(secondary.enabled);
+if hasSecondary
+    sc1 = secondary.bounds.eq8.individual.S1.bits_per_use;
+    sc2 = secondary.bounds.eq8.individual.S2.bits_per_use;
+    [se8x, se8y] = normalizedCurve(secondary.bounds.eq8.individual.S1.bits_per_use, secondary.bounds.eq8.individual.S2.bits_per_use, secondary.bounds.eq8.sum.bits_per_use, sc1, sc2);
+    [sejx, sejy] = normalizedCurve(secondary.channels.S1.mutual_information_bits_per_use, secondary.channels.S2.mutual_information_bits_per_use, ...
+        secondary.joint.mutual_information_bits_per_use, sc1, sc2);
+    sp1 = secondary.channels.S1.mutual_information_bits_per_use / max(sc1, eps);
+    sp2 = secondary.channels.S2.mutual_information_bits_per_use / max(sc2, eps);
+else
+    sc1 = NaN; sc2 = NaN;
+    se8x = []; se8y = [];
+    sejx = []; sejy = [];
+    sp1 = NaN; sp2 = NaN;
 end
-pj1 = p1 * scale;
-pj2 = p2 * scale;
 
 figVisible = 'off';
 if opts.showFigure
@@ -877,71 +994,82 @@ plot(ax, e8x, e8y, 'k-', 'LineWidth',1.8, 'DisplayName','Eq.8 boundary');
 if opts.showPolygonClosureLines
     drawClosureToOrigin(ax, e8x, e8y, [0 0 0], 1.2);
 end
-plot(ax, e9x, e9y, '--', 'Color',[0.85 0.33 0.10], 'LineWidth',1.6, 'DisplayName','Eq.9 outer (normalized)');
+fill(ax, [ejx fliplr(ejx)], [ejy zeros(size(ejy))], [0.00 0.67 0.47], ...
+    'FaceAlpha', 0.16, 'EdgeColor', 'none', 'DisplayName', sprintf('Measured joint region (%s)', opts.date));
+plot(ax, ejx, ejy, '-', 'Color', [0.00 0.62 0.45], 'LineWidth', 1.6, ...
+    'DisplayName', sprintf('Measured joint boundary (%s)', opts.date));
 if opts.showPolygonClosureLines
-    drawClosureToOrigin(ax, e9x, e9y, [0.85 0.33 0.10], 1.0);
-end
-if opts.showEAOuterBound
-    plot(ax, eax, eay, '-', 'Color',[0 0.45 0.74], 'LineWidth',1.8, 'DisplayName','Eq.10/11 EA outer (normalized)');
-    if opts.showPolygonClosureLines
-        drawClosureToOrigin(ax, eax, eay, [0 0.45 0.74], 1.1);
-    end
-end
-if opts.showExperimentalJointRegion
-    fill(ax, [ejx fliplr(ejx)], [ejy zeros(size(ejy))], [0.00 0.67 0.47], ...
-        'FaceAlpha', 0.16, 'EdgeColor', 'none', 'DisplayName', 'Measured joint region');
-    plot(ax, ejx, ejy, '-', 'Color', [0.00 0.62 0.45], 'LineWidth', 1.6, ...
-        'DisplayName', 'Measured joint boundary');
-    if opts.showPolygonClosureLines
-        drawClosureToOrigin(ax, ejx, ejy, [0.00 0.62 0.45], 1.1);
-    end
-end
-if recv.enable && recv.hasOPAR
-    plot(ax, recv.opar.x, recv.opar.y, '-.', 'Color',[0.20 0.62 0.84], 'LineWidth',1.5, ...
-        'DisplayName', sprintf('OPAR proxy (\\alpha=%.3f)', recv.alpha_opar));
-    if opts.showPolygonClosureLines
-        drawClosureToOrigin(ax, recv.opar.x, recv.opar.y, [0.20 0.62 0.84], 1.0);
-    end
-end
-if recv.enable && recv.hasPCR
-    plot(ax, recv.pcr.x, recv.pcr.y, '-', 'Color',[0.49 0.18 0.56], 'LineWidth',1.5, ...
-        'DisplayName', sprintf('PCR proxy (\\alpha=%.3f)', recv.alpha_pcr));
-    if opts.showPolygonClosureLines
-        drawClosureToOrigin(ax, recv.pcr.x, recv.pcr.y, [0.49 0.18 0.56], 1.0);
-    end
+    drawClosureToOrigin(ax, ejx, ejy, [0.00 0.62 0.45], 1.1);
 end
 
-scatter(ax, p1, p2, 64, 'filled', 'MarkerFaceColor',[0.49 0.18 0.56], 'DisplayName','Per-channel point');
-scatter(ax, pj1, pj2, 60, 'd', 'filled', 'MarkerFaceColor',[0.13 0.55 0.13], 'DisplayName','Joint projected point');
+scatter(ax, p1, p2, 64, 'filled', 'MarkerFaceColor',[0.49 0.18 0.56], ...
+    'DisplayName', sprintf('Measured singles point (%s)', opts.date));
+
+if hasSecondary
+    fill(ax, [se8x fliplr(se8x)], [se8y zeros(size(se8y))], [0.96 0.86 0.78], ...
+        'FaceAlpha',0.18, 'EdgeColor','none', 'DisplayName', sprintf('Eq.8 coherent (%s)', secondary.label));
+    plot(ax, se8x, se8y, '-', 'Color',[0.78 0.33 0.12], 'LineWidth',1.7, ...
+        'DisplayName', sprintf('Eq.8 boundary (%s)', secondary.label));
+    if opts.showPolygonClosureLines
+        drawClosureToOrigin(ax, se8x, se8y, [0.78 0.33 0.12], 1.1);
+    end
+
+    fill(ax, [sejx fliplr(sejx)], [sejy zeros(size(sejy))], [0.25 0.55 0.95], ...
+        'FaceAlpha', 0.14, 'EdgeColor', 'none', 'DisplayName', sprintf('Measured joint region (%s)', secondary.label));
+    plot(ax, sejx, sejy, '-', 'Color', [0.10 0.40 0.86], 'LineWidth', 1.5, ...
+        'DisplayName', sprintf('Measured joint boundary (%s)', secondary.label));
+    if opts.showPolygonClosureLines
+        drawClosureToOrigin(ax, sejx, sejy, [0.10 0.40 0.86], 1.0);
+    end
+
+    scatter(ax, sp1, sp2, 64, 'filled', 'MarkerFaceColor',[0.07 0.34 0.72], ...
+        'DisplayName', sprintf('Measured singles point (%s)', secondary.label));
+end
 
 if opts.showCoherentConstraintLines
-    xDiag = linspace(0, max(e8x), 1200);
+    xIntDiag = bounds.eq8.sum.bits_per_use / max(coh1, eps);
+    yIntDiag = bounds.eq8.sum.bits_per_use / max(coh2, eps);
+    xDiag = linspace(0, xIntDiag, 1200);
     yDiag = (bounds.eq8.sum.bits_per_use - coh1*xDiag) ./ max(coh2, eps);
     yDiag = max(yDiag, 0);
-    plot(ax, [1 1], [0 max([1, max(e8y)])], ':', 'Color', [0.25 0.25 0.25], 'LineWidth', 1.2, ...
-        'DisplayName', 'Coherent constraint: R_1 <= C_1');
-    plot(ax, [0 max([1, max(e8x)])], [1 1], ':', 'Color', [0.25 0.25 0.25], 'LineWidth', 1.2, ...
-        'DisplayName', 'Coherent constraint: R_2 <= C_2');
-    plot(ax, xDiag, yDiag, ':', 'Color', [0.10 0.10 0.10], 'LineWidth', 1.2, ...
-        'DisplayName', 'Coherent constraint: R_1+R_2 <= C_{sum}');
+    plot(ax, xDiag, yDiag, '--', 'Color', [0.85 0.33 0.10], 'LineWidth', 1.5, ...
+        'DisplayName', 'Coherent outer bound: R_1+R_2 <= C_{sum}');
+else
+    xIntDiag = bounds.eq8.sum.bits_per_use / max(coh1, eps);
+    yIntDiag = bounds.eq8.sum.bits_per_use / max(coh2, eps);
 end
 
-if opts.showEAOuterBound
-    eaX = max(eax);
-    eaY = max(eay);
+if hasSecondary
+    sxIntDiag = secondary.bounds.eq8.sum.bits_per_use / max(sc1, eps);
+    syIntDiag = secondary.bounds.eq8.sum.bits_per_use / max(sc2, eps);
+    se8xMax = max(se8x);
+    se8yMax = max(se8y);
+    sejxMax = max(sejx);
+    sejyMax = max(sejy);
+    sp1v = sp1;
+    sp2v = sp2;
+    if opts.showCoherentConstraintLines
+        sxDiag = linspace(0, sxIntDiag, 1200);
+        syDiag = (secondary.bounds.eq8.sum.bits_per_use - sc1*sxDiag) ./ max(sc2, eps);
+        syDiag = max(syDiag, 0);
+        plot(ax, sxDiag, syDiag, '--', 'Color', [0.93 0.58 0.20], 'LineWidth', 1.4, ...
+            'DisplayName', sprintf('Coherent outer bound (%s)', secondary.label));
+    end
 else
-    eaX = 0;
-    eaY = 0;
+    sxIntDiag = 0;
+    syIntDiag = 0;
+    se8xMax = 0;
+    se8yMax = 0;
+    sejxMax = 0;
+    sejyMax = 0;
+    sp1v = 0;
+    sp2v = 0;
 end
-if opts.showExperimentalJointRegion
-    ejX = max(ejx);
-    ejY = max(ejy);
-else
-    ejX = 0;
-    ejY = 0;
-end
-xMax = 1.1*max([eaX, ejX, max(recv.xall), p1, pj1, 1]);
-yMax = 1.1*max([eaY, ejY, max(recv.yall), p2, pj2, 1]);
+
+ejX = max(ejx);
+ejY = max(ejy);
+xMax = 1.06*max([max(e8x), ejX, p1, xIntDiag, se8xMax, sejxMax, sp1v, sxIntDiag, 1]);
+yMax = 1.06*max([max(e8y), ejY, p2, yIntDiag, se8yMax, sejyMax, sp2v, syIntDiag, 1]);
 xlim(ax,[0 xMax]); ylim(ax,[0 yMax]);
 xlabel(ax, 'R_1 / C_1^{coh} (bits/use normalized)');
 ylabel(ax, 'R_2 / C_2^{coh} (bits/use normalized)');
@@ -967,11 +1095,11 @@ out = struct();
 out.png_path = opts.plotPngPath;
 out.fig_path = opts.plotFigPath;
 out.experimental_normalized_point = struct('R1_over_C1coh', p1, 'R2_over_C2coh', p2);
-out.joint_projected_normalized_point = struct('R1_over_C1coh', pj1, 'R2_over_C2coh', pj2);
+out.joint_projected_normalized_point = struct('R1_over_C1coh', NaN, 'R2_over_C2coh', NaN);
 out.joint_bits_per_use = joint.mutual_information_bits_per_use;
 out.eq8_sum_normalized = bounds.eq8.sum.bits_per_use / max(coh1 + coh2, eps);
-out.show_ea_outer_bound = opts.showEAOuterBound;
-out.show_experimental_joint_region = opts.showExperimentalJointRegion;
+out.show_ea_outer_bound = false;
+out.show_experimental_joint_region = true;
 out.show_coherent_constraint_lines = opts.showCoherentConstraintLines;
 out.show_polygon_closure_lines = opts.showPolygonClosureLines;
 out.show_figure = opts.showFigure;
@@ -985,7 +1113,28 @@ out.experimental_joint_region = struct( ...
     'R2_max_over_C2coh', rep2.mutual_information_bits_per_use / max(coh2, eps), ...
     'sum_bits_per_use', joint.mutual_information_bits_per_use ...
 );
-out.receiver_overlay = recv.summary;
+out.receiver_overlay = struct('enabled', false, 'note', 'Disabled in minimal coherent-vs-measured view.');
+if hasSecondary
+    out.secondary_overlay = struct( ...
+        'enabled', true, ...
+        'label', secondary.label, ...
+        'date', secondary.date, ...
+        'selected', secondary.selected, ...
+        'eq8_coherent_bounds_bits_per_use', struct( ...
+            'C1', secondary.bounds.eq8.individual.S1.bits_per_use, ...
+            'C2', secondary.bounds.eq8.individual.S2.bits_per_use, ...
+            'Csum', secondary.bounds.eq8.sum.bits_per_use ...
+        ), ...
+        'experimental_normalized_point', struct('R1_over_C1coh', sp1, 'R2_over_C2coh', sp2), ...
+        'experimental_joint_region', struct( ...
+            'R1_max_over_C1coh', secondary.channels.S1.mutual_information_bits_per_use / max(sc1, eps), ...
+            'R2_max_over_C2coh', secondary.channels.S2.mutual_information_bits_per_use / max(sc2, eps), ...
+            'sum_bits_per_use', secondary.joint.mutual_information_bits_per_use ...
+        ) ...
+    );
+else
+    out.secondary_overlay = struct('enabled', false);
+end
 end
 
 function [xn, yn] = normalizedCurve(r1, r2, rsum, coh1, coh2)
@@ -1011,11 +1160,11 @@ if abs(x) < tol && abs(y) < tol
     return;
 end
 if abs(x) < tol || abs(y) < tol
-    plot(ax, [x 0], [y 0], ':', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
+    plot(ax, [x 0], [y 0], '-', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
 else
     % Prefer vertical closure first, then horizontal when needed.
-    plot(ax, [x x], [y 0], ':', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
-    plot(ax, [x 0], [0 0], ':', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
+    plot(ax, [x x], [y 0], '-', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
+    plot(ax, [x 0], [0 0], '-', 'Color', col, 'LineWidth', lw, 'HandleVisibility', 'off');
 end
 end
 
