@@ -20,12 +20,15 @@ cfg.constantsByChannel.S1 = struct('Rb', cfg.constants.Rb);
 cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
 
 % Theoretical SNR mode-count basis.
-% This Rb is used for classical/theory mode counting in build_physics,
-% independent of channel-specific processing bit rates.
+% Default behavior: use each channel's own Rb for mode counting.
+% Optional override: set useSharedRbForModes=true to force a shared base Rb.
 cfg.theory = struct();
+
+cfg.theory.useSharedRbForModes = false;
 cfg.theory.baseRbHz = 16e3;
 
 cfg.processing = struct();
+cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;

@@ -21,18 +21,31 @@ constants_S2 = applyChannelOverrides(cfg.constants, cfg, 'constantsByChannel', '
 processing_S1 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S1'));
 processing_S2 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S2'));
 
-theoryRbHz = cfg.constants.Rb;
-if isfield(cfg, 'theory') && isstruct(cfg.theory) && isfield(cfg.theory, 'baseRbHz') && ~isempty(cfg.theory.baseRbHz)
-    theoryRbHz = cfg.theory.baseRbHz;
-elseif isfield(cfg.constants, 'Rb_base') && ~isempty(cfg.constants.Rb_base)
-    theoryRbHz = cfg.constants.Rb_base;
+constants_theory_S1 = constants_S1;
+constants_theory_S2 = constants_S2;
+theoryUseSharedRb = false;
+theoryRbHz = NaN;
+if isfield(cfg, 'theory') && isstruct(cfg.theory)
+    if isfield(cfg.theory, 'useSharedRbForModes') && logical(cfg.theory.useSharedRbForModes)
+        theoryUseSharedRb = true;
+    end
+    if isfield(cfg.theory, 'baseRbHz') && ~isempty(cfg.theory.baseRbHz)
+        theoryRbHz = cfg.theory.baseRbHz;
+    end
 end
 
-constants_theory = cfg.constants;
-constants_theory.Rb = theoryRbHz;
+if theoryUseSharedRb
+    if ~isfinite(theoryRbHz)
+        theoryRbHz = cfg.constants.Rb;
+    end
+    constants_theory_S1.Rb = theoryRbHz;
+    constants_theory_S2.Rb = theoryRbHz;
+else
+    theoryRbHz = NaN;
+end
 
-tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1);
-tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2);
+tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1, processing_S1.shorten);
+tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2, processing_S2.shorten);
 
 tank_S1 = postprocess.matched_downsample(constants_S1, tank_S1, processing_S1.deterministic, processing_S1.show_SNR);
 tank_S2 = postprocess.matched_downsample(constants_S2, tank_S2, processing_S2.deterministic, processing_S2.show_SNR);
@@ -44,8 +57,8 @@ if processing_S2.makePlots
     postprocess.visualize_v2(tank_S2, constants_S2);
 end
 
-phys1 = postprocess.build_physics(cfg.physics.S1, cfg.phys_constants, constants_theory);
-phys2 = postprocess.build_physics(cfg.physics.S2, cfg.phys_constants, constants_theory);
+phys1 = postprocess.build_physics(cfg.physics.S1, cfg.phys_constants, constants_theory_S1);
+phys2 = postprocess.build_physics(cfg.physics.S2, cfg.phys_constants, constants_theory_S2);
 summary = postprocess.displayReport(tank_S1, tank_S2, phys1, phys2);
 
 pp = struct();
@@ -72,7 +85,11 @@ result.summary = summary;
 result.pp = pp;
 result.channelConfig = struct('S1', struct('constants', constants_S1, 'processing', processing_S1), ...
                               'S2', struct('constants', constants_S2, 'processing', processing_S2));
-result.theoryConfig = struct('baseRbHz', theoryRbHz, 'constants', constants_theory);
+result.theoryConfig = struct( ...
+    'useSharedRbForModes', theoryUseSharedRb, ...
+    'baseRbHz', theoryRbHz, ...
+    'constants_S1', constants_theory_S1, ...
+    'constants_S2', constants_theory_S2);
 
 if procGlobal.saveProcessedMat
     save(fullfile(runFolder, 'processed.mat'), 'result', '-v7.3');
@@ -119,6 +136,9 @@ if ~isfield(p, 'deterministic')
 end
 if ~isfield(p, 'makePlots')
     p.makePlots = false;
+end
+if ~isfield(p, 'shorten')
+    p.shorten = 1;
 end
 if ~isfield(p, 'saveProcessedMat')
     p.saveProcessedMat = true;
