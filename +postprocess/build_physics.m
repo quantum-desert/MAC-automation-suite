@@ -69,7 +69,7 @@ function package = build_physics(physics_cfg, phys_constants, constants)
     % consisten with SNR definition....
     package.Rb_modeBasis = constants.Rb;
     package.T = 1 / package.Rb_modeBasis;
-    package.Modes = phys_constants.W * package.T;
+    package.Modes = phys_constants.W * package.T
 
     % Theoretical SNRs
     package.SNR_Q = 4 * ...
