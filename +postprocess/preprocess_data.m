@@ -1,4 +1,4 @@
-function tank = preprocess_data(filenames,constants,shorten)
+function tank = preprocess_data(filenames,constants)
 % Purpose: read in raw data, organize and process into data structure
 % Input:
 %   filenames - struct containing paths to the txt file(s)
@@ -13,7 +13,6 @@ function tank = preprocess_data(filenames,constants,shorten)
 arguments
     filenames
     constants
-    shorten=1
 end
 
 tank.label = filenames.label; 
@@ -31,11 +30,11 @@ tank.t_mod = modulation(:,1);
 tank.A_mod = modulation(:,2);
 
 % pre-processing
-% truncate dataset
-len = length(tank.t_homo);
-tank.t_homo = tank.t_homo(1:floor(len*shorten));
-tank.A_homo = tank.A_homo(1:floor(len*shorten));
-tank.A_mod = tank.A_mod(1:floor(len*shorten));
+% % truncate dataset
+% len = length(tank.t_homo);
+% tank.t_homo = tank.t_homo(1:floor(len*shorten));
+% tank.A_homo = tank.A_homo(1:floor(len*shorten));
+% tank.A_mod = tank.A_mod(1:floor(len*shorten));
 
 % digitize modulation
 tank.A_mod_d = (tank.A_mod)./max(tank.A_mod);

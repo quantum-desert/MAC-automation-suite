@@ -20,7 +20,6 @@ cfg.constantsByChannel.S1 = struct('Rb', cfg.constants.Rb);
 cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
 
 cfg.processing = struct();
-cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;
 cfg.processing.saveProcessedMat = true;
 cfg.processing.saveSummaryJson = true;
