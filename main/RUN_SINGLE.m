@@ -40,8 +40,18 @@ end
 
 
 
-cfg.brain.pauseBetweenRunsSeconds = 1;
+cfg.brain.pauseBetweenRunsSeconds = 0;
 cfg.brain.processAfterAcquire = true;
+
+% Fast acquisition/storage settings
+cfg.acquisition.waitAfterIdleSeconds = 0;
+cfg.storage.writeMat = false;
+cfg.storage.writeParsedWaveformMat = false;
+cfg.storage.writePrettyArtifacts = false;
+cfg.storage.writeManifestJson = true;
+cfg.transfer.parser.verbose = false;
+cfg.transfer.parser.configureEachChannel = false;
+cfg.transfer.parser.stopBeforeSetupEachChannel = false;
 
 % Keep the refactored post-processing behavior close to the original script.
 cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
@@ -49,6 +59,8 @@ cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 % control plot output
 cfg.postprocess.processing.makePlots = true;
 cfg.postprocess.processing.show_SNR = true;
+cfg.postprocess.processing.saveProcessedMat = false;
+cfg.postprocess.processing.saveSummaryJson = true;
 
 
 % 1010 versus PN15 mod selection here

@@ -56,6 +56,11 @@ cfg.transfer.parser.commHeader = "SHORT";    % CHDR SHORT
 cfg.transfer.parser.commFormat = "DEF9,WORD,BIN";   % CFMT DEF9,WORD,BIN
 cfg.transfer.parser.commOrder = "LO";        % CORD LO
 cfg.transfer.parser.waveformSetup = "SP,1,NP,0,FP,0,SN,0"; % WFSU ...
+% Speed controls for per-run/per-channel transfer setup.
+% Typical fast setting: setup once for first channel only, and do not STOP
+% inside each parser call (acquireRun already triggers once per run).
+cfg.transfer.parser.configureEachChannel = false;
+cfg.transfer.parser.stopBeforeSetupEachChannel = false;
 
 % Timeout control
 cfg.transfer.parser.timeoutSeconds = 120;    % initial safe default

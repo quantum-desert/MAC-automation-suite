@@ -44,13 +44,25 @@ end
 hours=1;
 minutes=60*hours;
 cfg.brain.runDurationSeconds = floor(60*minutes);
-cfg.brain.pauseBetweenRunsSeconds = 1;
+cfg.brain.pauseBetweenRunsSeconds = 0;
 cfg.brain.processAfterAcquire = true;
+
+% Fast acquisition/storage settings
+cfg.acquisition.waitAfterIdleSeconds = 0;
+cfg.storage.writeMat = false;
+cfg.storage.writeParsedWaveformMat = false;
+cfg.storage.writePrettyArtifacts = false;
+cfg.storage.writeManifestJson = true;
+cfg.transfer.parser.verbose = false;
+cfg.transfer.parser.configureEachChannel = false;
+cfg.transfer.parser.stopBeforeSetupEachChannel = false;
 
 % Keep the refactored post-processing behavior close to the original script.
 cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
 cfg.postprocess.processing.makePlots = false;
 cfg.postprocess.processing.show_SNR = false;
+cfg.postprocess.processing.saveProcessedMat = false;
+cfg.postprocess.processing.saveSummaryJson = true;
 
 % 1010 versus PN15 mod selection here
 cfg.postprocess.processing.deterministic = true;

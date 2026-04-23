@@ -33,6 +33,7 @@ function out = lecroy_waveform_all_parser(io, chan, varargin)
 %   'WaveformSetup'      : "SP,1,NP,0,FP,0,SN,0" default
 %   'ReadTimeScaleFromDescriptor' : true default
 %   'FallbackInspectTimeScale'    : false default
+%   'ConfigureTransfer'     : true default (set false to skip CHDR/CFMT/CORD/WFSU)
 %
 % Example:
 %   io = visadev("USB0::0x05FF::0x1023::4609N02990::0::INSTR");
@@ -63,6 +64,7 @@ function out = lecroy_waveform_all_parser(io, chan, varargin)
     addParameter(p, 'WaveformSetup', "SP,1,NP,0,FP,0,SN,0", @(x)isstring(x) || ischar(x));
     addParameter(p, 'ReadTimeScaleFromDescriptor', true, @(x)islogical(x) || isnumeric(x));
     addParameter(p, 'FallbackInspectTimeScale', false, @(x)islogical(x) || isnumeric(x));
+    addParameter(p, 'ConfigureTransfer', true, @(x)islogical(x) || isnumeric(x));
     parse(p, varargin{:});
     opt = p.Results;
 
@@ -74,7 +76,9 @@ function out = lecroy_waveform_all_parser(io, chan, varargin)
         tryWriteLine(io, "STOP");
     end
 
-    setupTransfer(io, opt, opt.Verbose);
+    if opt.ConfigureTransfer
+        setupTransfer(io, opt, opt.Verbose);
+    end
 
     if opt.AcquireSingle
         acquireSingle(io, opt.Verbose);

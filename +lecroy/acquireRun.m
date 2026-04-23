@@ -47,14 +47,26 @@ function result = acquireRun(cfg,session)
         % Read all requested channels using WFALL parser only
         channelData = struct();
         % parserFcn = str2func(cfg.transfer.parser.functionName);
+        parserCfg = cfg.transfer.parser;
+        if ~isfield(parserCfg, 'configureEachChannel')
+            parserCfg.configureEachChannel = false;
+        end
+        if ~isfield(parserCfg, 'stopBeforeSetupEachChannel')
+            parserCfg.stopBeforeSetupEachChannel = false;
+        end
+        channelList = cfg.acquisition.channels;
 
-        for ch = cfg.acquisition.channels
+        for idx = 1:numel(channelList)
+            ch = channelList(idx);
             chanName = "C" + string(ch);
+            doConfigureTransfer = logical(parserCfg.configureEachChannel) || (idx == 1);
 
             wf = lecroy.lecroy_waveform_all_parser( ...
                 session.io, chanName, ...
                 "AcquireSingle", cfg.transfer.parser.acquireSingle, ...
                 "TimeoutSeconds", cfg.transfer.parser.timeoutSeconds, ...
+                "StopBeforeSetup", logical(parserCfg.stopBeforeSetupEachChannel), ...
+                "ConfigureTransfer", doConfigureTransfer, ...
                 "CommFormat", cfg.transfer.parser.commFormat, ...
                 "CommOrder", cfg.transfer.parser.commOrder, ...
                 "WaveformSetup", cfg.transfer.parser.waveformSetup, ...
@@ -196,10 +208,8 @@ function writeTwoColumnCsv(csvPath, t, y, headerLines)
         fprintf(fid, '%s\n', headerLines(k));
     end
 
-    data = [t(:), y(:)];
-    for k = 1:size(data, 1)
-        fprintf(fid, '%.12g,%.12g\n', data(k,1), data(k,2));
-    end
+    data = [t(:), y(:)].';
+    fprintf(fid, '%.12g,%.12g\n', data);
 end
 
 function out = channelLabelsToManifest(cfg)
