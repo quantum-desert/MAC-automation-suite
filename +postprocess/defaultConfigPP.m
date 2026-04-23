@@ -19,6 +19,12 @@ cfg.constantsByChannel = struct();
 cfg.constantsByChannel.S1 = struct('Rb', cfg.constants.Rb);
 cfg.constantsByChannel.S2 = struct('Rb', cfg.constants.Rb);
 
+% Theoretical SNR mode-count basis.
+% This Rb is used for classical/theory mode counting in build_physics,
+% independent of channel-specific processing bit rates.
+cfg.theory = struct();
+cfg.theory.baseRbHz = 4e3;
+
 cfg.processing = struct();
 cfg.processing.shorten = 1;
 cfg.processing.makePlots = 1;

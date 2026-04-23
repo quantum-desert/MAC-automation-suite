@@ -60,6 +60,8 @@ cfg.postprocess.processing.deterministic = true;
 % bit rate:
 % cfg.postprocess.constantsByChannel.S1.Rb = 16e3;
 % cfg.postprocess.constantsByChannel.S2.Rb = 12e3;
+% theory mode-count basis for SNR_C/SNR_Q (shared across channels):
+% cfg.postprocess.theory.baseRbHz = 4e3;
 %
 % processing knobs:
 % cfg.postprocess.processingByChannel.S1.deterministic = true;

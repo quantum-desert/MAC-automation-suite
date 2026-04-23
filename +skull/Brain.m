@@ -596,6 +596,9 @@ classdef Brain < handle
             if isfield(pp, 'processingByChannel')
                 ppRecord.processingByChannel = skull.Brain.toJsonSafe(pp.processingByChannel);
             end
+            if isfield(pp, 'theory')
+                ppRecord.theory = skull.Brain.toJsonSafe(pp.theory);
+            end
             if isfield(pp, 'channels')
                 ppRecord.channels = skull.Brain.toJsonSafe(pp.channels);
             end
