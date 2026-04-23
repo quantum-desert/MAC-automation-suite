@@ -48,7 +48,12 @@ classdef Brain < handle
             end
             brainReport = T; %#ok<NASGU>
             sweepSummary = S; %#ok<NASGU>
-            save(tmpPath, 'brainReport', 'sweepSummary', '-v7.3');
+            % Prefer -v7 for speed; fall back to -v7.3 only if needed.
+            try
+                save(tmpPath, 'brainReport', 'sweepSummary', '-v7');
+            catch
+                save(tmpPath, 'brainReport', 'sweepSummary', '-v7.3');
+            end
             skull.Brain.replaceFileAtomic(tmpPath, finalPath);
         end
 
@@ -324,6 +329,7 @@ classdef Brain < handle
             T = obj.brainReport;
             S = obj.sweepSummary;
             batchInfo = obj.buildBatchInfo(T);
+            writeOpts = obj.getSweepWriteOptions();
             TTracking = T;
             if any(strcmp('runDir', TTracking.Properties.VariableNames))
                 TTracking.runDir = [];
@@ -348,8 +354,13 @@ classdef Brain < handle
                 mkdir(sweepDir);
             end
 
-            skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), TTracking);
-            skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), TTracking, S);
+            if writeOpts.writeCsvEveryRun
+                skull.Brain.writeTableAtomic(fullfile(sweepDir, 'sweep_tracking.csv'), TTracking);
+            end
+
+            if writeOpts.writeMatEveryRun
+                skull.Brain.writeMatAtomic(fullfile(sweepDir, 'sweep_tracking.mat'), TTracking, S);
+            end
 
             jsonStruct = struct();
             jsonStruct.lastUpdatedUtc = char(datetime('now', 'TimeZone', 'UTC', 'Format', 'yyyy-MM-dd''T''HH:mm:ss''Z'''));
@@ -364,7 +375,9 @@ classdef Brain < handle
                 fullfile(sweepRootDir, sprintf('sweep_tracking_%s.json', char(obj.batchId))), ...
                 jsonStruct);
 
-            skull.Brain.writeFlaggedTxtAtomic(fullfile(sweepDir, 'sweep_flagged_runs.txt'), T, S);
+            if writeOpts.writeFlaggedEveryRun
+                skull.Brain.writeFlaggedTxtAtomic(fullfile(sweepDir, 'sweep_flagged_runs.txt'), T, S);
+            end
 
             status = struct();
             status.lastUpdatedUtc = jsonStruct.lastUpdatedUtc;
@@ -389,12 +402,18 @@ classdef Brain < handle
 
             physicsCfg = obj.extractPhysicsCfg();
             if ~isempty(physicsCfg)
-                skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'physics_cfg.json'), physicsCfg);
+                physicsPath = fullfile(sweepDir, 'physics_cfg.json');
+                if ~writeOpts.staticBatchFilesOnce || ~isfile(physicsPath)
+                    skull.Brain.writeJsonAtomic(physicsPath, physicsCfg);
+                end
             end
 
             ppRecord = obj.extractDefaultConfigPPRecord();
             if ~isempty(ppRecord)
-                skull.Brain.writeJsonAtomic(fullfile(sweepDir, 'defaultConfigPP_record.json'), ppRecord);
+                cfgRecordPath = fullfile(sweepDir, 'defaultConfigPP_record.json');
+                if ~writeOpts.staticBatchFilesOnce || ~isfile(cfgRecordPath)
+                    skull.Brain.writeJsonAtomic(cfgRecordPath, ppRecord);
+                end
             end
         end
 
@@ -676,6 +695,33 @@ classdef Brain < handle
                 end
             end
             batchId = "batch_" + string(maxIdx + 1);
+        end
+
+        function opts = getSweepWriteOptions(obj)
+            % Fast defaults: JSON/status each run; heavy artifacts optional.
+            opts = struct();
+            opts.writeCsvEveryRun = false;
+            opts.writeMatEveryRun = false;
+            opts.writeFlaggedEveryRun = false;
+            opts.staticBatchFilesOnce = true;
+
+            if ~isfield(obj.cfg, 'brain') || ~isstruct(obj.cfg.brain)
+                return;
+            end
+            b = obj.cfg.brain;
+
+            if isfield(b, 'writeSweepTrackingCsv')
+                opts.writeCsvEveryRun = logical(b.writeSweepTrackingCsv);
+            end
+            if isfield(b, 'writeSweepTrackingMat')
+                opts.writeMatEveryRun = logical(b.writeSweepTrackingMat);
+            end
+            if isfield(b, 'writeSweepFlaggedTxt')
+                opts.writeFlaggedEveryRun = logical(b.writeSweepFlaggedTxt);
+            end
+            if isfield(b, 'writeStaticBatchFilesOnce')
+                opts.staticBatchFilesOnce = logical(b.writeStaticBatchFilesOnce);
+            end
         end
     end
 end

@@ -138,6 +138,12 @@ cfg.brain.pauseBetweenRunsSeconds = 0;
 cfg.brain.processAfterAcquire = true;
 cfg.brain.stopOnError = true;
 cfg.brain.saveSweepSummary = true;
+% Sweep-state write controls (speed vs completeness).
+% JSON trackers are always updated every run; these toggle heavier artifacts.
+cfg.brain.writeSweepTrackingCsv = false;
+cfg.brain.writeSweepTrackingMat = false;
+cfg.brain.writeSweepFlaggedTxt = false;
+cfg.brain.writeStaticBatchFilesOnce = true;
 
 % ---- Post-processing ----
 cfg.postprocess = postprocess.defaultConfigPP(cfg.storage.rootDir);
