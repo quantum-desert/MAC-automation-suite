@@ -21,6 +21,16 @@ constants_S2 = applyChannelOverrides(cfg.constants, cfg, 'constantsByChannel', '
 processing_S1 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S1'));
 processing_S2 = normalizeProcessingStruct(applyChannelOverrides(procGlobal, cfg, 'processingByChannel', 'S2'));
 
+theoryRbHz = cfg.constants.Rb;
+if isfield(cfg, 'theory') && isstruct(cfg.theory) && isfield(cfg.theory, 'baseRbHz') && ~isempty(cfg.theory.baseRbHz)
+    theoryRbHz = cfg.theory.baseRbHz;
+elseif isfield(cfg.constants, 'Rb_base') && ~isempty(cfg.constants.Rb_base)
+    theoryRbHz = cfg.constants.Rb_base;
+end
+
+constants_theory = cfg.constants;
+constants_theory.Rb = theoryRbHz;
+
 tank_S1 = postprocess.preprocess_data(fnames_S1, constants_S1);
 tank_S2 = postprocess.preprocess_data(fnames_S2, constants_S2);
 
@@ -34,8 +44,8 @@ if processing_S2.makePlots
     postprocess.visualize_v2(tank_S2, constants_S2);
 end
 
-phys1 = postprocess.build_physics(cfg.physics.S1, cfg.phys_constants, constants_S1);
-phys2 = postprocess.build_physics(cfg.physics.S2, cfg.phys_constants, constants_S2);
+phys1 = postprocess.build_physics(cfg.physics.S1, cfg.phys_constants, constants_theory);
+phys2 = postprocess.build_physics(cfg.physics.S2, cfg.phys_constants, constants_theory);
 summary = postprocess.displayReport(tank_S1, tank_S2, phys1, phys2);
 
 pp = struct();
@@ -62,6 +72,7 @@ result.summary = summary;
 result.pp = pp;
 result.channelConfig = struct('S1', struct('constants', constants_S1, 'processing', processing_S1), ...
                               'S2', struct('constants', constants_S2, 'processing', processing_S2));
+result.theoryConfig = struct('baseRbHz', theoryRbHz, 'constants', constants_theory);
 
 if procGlobal.saveProcessedMat
     save(fullfile(runFolder, 'processed.mat'), 'result', '-v7.3');
