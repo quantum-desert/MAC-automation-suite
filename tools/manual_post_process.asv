@@ -2,12 +2,19 @@ function out = manual_post_process(independent)
 %MANUAL_POST_PROCESS Manual post-processing skeleton for two explicit datasets.
 % Edit cfg.<channel>.pipeline fields to manually tune each stage.
 % args
-% independent = true | false 
+% independent = true | false
 % ^ param controls: do we apply optimization from prior step to master
 % dataset before sweeping next param?
 if(nargin<1)
-    independent = false
+    independent = false;
 end
+
+% override structure defines which optimization steps to skip
+%  (apply known best values)
+override = struct();
+override.causal_filt.skip = true;
+override.causal_filt.bestLP = 0.57486850;
+override.causal_filt.bestHP = 0.62372881;
 
 
 %% Explicit dataset roots (best S1/S2 from Advantage_Data/Deterministic)
@@ -37,7 +44,7 @@ cfg.s1.pipeline.lag = -1;
 cfg.s1.pipeline.trim.mode = 'trim_start'; % 'none' | 'trim_start' | 'trim_end'
 cfg.s1.pipeline.trim.points = 2256;       % in downsampled points
 cfg.s1.pipeline.phase = 7;
-cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M; 
+cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
 
 cfg.s2.pipeline.M = 16;
 cfg.s2.pipeline.lag = 1;
@@ -57,206 +64,109 @@ out.cfg = cfg; % return cfg for debugging
 % first, focus on S1, then apply everything to S2 later
 
 %%  manual filter sweep - LP + HP chain
-% set flags
-verbose=false;
+% 
+% 
+if(~override.causal_filt.skip)
+    % set flags
+    verbose=false;
 
-% S1
-% coarse grid search
-num_fopt = 5;
-lp1 = linspace(0.1,2,num_fopt);
-hp1 = linspace(0.2,0.7,num_fopt);
+    % S1
+    %  coarse grid search
+    num_fopt = 30;
+    lp1 = linspace(0.1,2,num_fopt);
+    hp1 = linspace(0.2,0.7,num_fopt);
 
-plot_opts = struct();
-plot_opts.visualize = true;
-plot_opts.title= 'Coarse Search';
-out.s1 = filter_grid_search(lp1,hp1,out.s1,'s1',cfg,plot_opts);
-out.s1
-return
+    plot_opts = struct();
+    plot_opts.visualize = true;
+    plot_opts.title= 'Coarse Search';
+    sweeprCoarse = filter_grid_search(lp1,hp1,out.s1,'s1',cfg,plot_opts);
 
+    % fine grid sweep
+    % locate ridge window from top percentile
+    prc = 10;
+    thr = prctile(sweeprCoarse.SNRr(:), 100-prc);      % top prc%
+    [r,c] = find(sweeprCoarse.SNRr >= thr);
 
-% fine grid sweep
-% locate ridge window from top percentile
-prc = 10;
-thr = prctile(SNRr(:), 100-prc);      % top prc%
-[r,c] = find(SNRr >= thr);
+    lp_lo = max(min(lp1(r)) - prc/1e2, min(lp1));
+    lp_hi = min(max(lp1(r)) + prc/1e2, max(lp1));
+    hp_lo = max(min(hp1(c)) - prc/1e2, min(hp1));
+    hp_hi = min(max(hp1(c)) + prc/1e2, max(hp1));
 
-lp_lo = max(min(lp1(r)) - prc/1e2, min(lp1));
-lp_hi = min(max(lp1(r)) + prc/1e2, max(lp1));
-hp_lo = max(min(hp1(c)) - prc/1e2, min(hp1));
-hp_hi = min(max(hp1(c)) + prc/1e2, max(hp1));
+    % --- pass 2: fine near transition ---
+    plot_opts.title= 'Fine Search';
+    lp2 = linspace(lp_lo, lp_hi, 2*num_fopt);
+    hp2 = linspace(hp_lo, hp_hi, 2*num_fopt);
+    sweeprFine = filter_grid_search(lp2,hp2,out.s1,'s1',cfg,plot_opts);
 
-% --- pass 2: fine near transition ---
-lp2 = linspace(lp_lo, lp_hi, 2*num_fopt);
-hp2 = linspace(hp_lo, hp_hi, 2*num_fopt);
-SNRr_fine = nan(numel(lp2),numel(hp2));
+else
+    sweeprFine.bestLP = override.causal_filt.bestLP;
+    sweeprFine.bestHP = override.causal_filt.bestHP;
 
-for r_lp = 1:numel(lp2)
-    % set LP cutoff
-    cfg.s1.pipeline.filter.ratio = lp2(r_lp);
-
-    for r_hp = 1:numel(hp2)
-        % set HP cutoff
-        cfg.s1.pipeline.filter.ratio_hp = hp2(r_hp);
-
-        % run processing
-        out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-    
-        % store SNRe
-        SNRr_fine(r_lp,r_hp) = out.s1.snre;
-    end
-    
 end
-
-% visualize fine map
-figure; imagesc(hp2, lp2, SNRr_fine); axis xy; hold on
-xlabel('HP Ratio'); ylabel('LP Ratio'); colorbar
-title('Fine scan near bright ridge')
-
-% pick out max
-[maxSnrFine, k] = max(SNRr_fine(:));
-[iLP, iHP] = ind2sub(size(SNRr_fine), k);
-bestLPfine = lp2(iLP);  % row axis value
-bestHPfine = hp2(iHP);  % col axis value
-plot(bestHPfine, bestLPfine, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
-
 % apply best filters
-cfg.s1.pipeline.filter.ratio = bestLPfine;
-cfg.s1.pipeline.filter.ratio_hp = bestHPfine;
+cfg.s1.pipeline.filter.mode = 'ratio_hp_lp_causal';
+cfg.s1.pipeline.filter.ratio = sweeprFine.bestLP
+cfg.s1.pipeline.filter.ratio_hp = sweeprFine.bestHP
 out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
 
 % report
-fprintf('\nFine scan best:\nLP ratio = %.5f, HP ratio = %.5f', ...
-    bestLPfine, bestHPfine);
-fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f', ...
-    maxSnrFine,out.s1.adv_db);
+fprintf('\nFine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
+    sweeprFine.bestLP, sweeprFine.bestHP);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s1.snre,out.s1.adv_db);
 
+% plot fft
 figure;ax=gca; grid off; theme light;
-plot_fft_from_outsx(ax,out.s1,strcat("fc_lp=",num2str(round(bestLPfine,3)),";fc_hp=",num2str(round(bestHPfine,3))));
+plot_fft_from_outsx(ax,out.s1,strcat("fc_lp=",num2str(round(sweeprFine.bestLP,3)),";fc_hp=",num2str(round(sweeprFine.bestHP,3))));
 xlim([0 40]); ylim([-80 1]);
 title('fft: optimized causal bandpass filter')
 
-return
-
-
-if(~independent)
-    % TODO select best filter combo
-
-% % select + apply best filter ratio
-% [~,idx] = max(SNRr); best_ratio = filt_options_lp(idx);
-% cfg.s1.pipeline.filter.ratio = best_ratio;
-% 
-% % run processing w/ best filter
-% verbose=true;
-% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-end
 
 %% manual filter sweep - non causal
-% set flags
-verbose=false;
-% S1
-% sweep through boxcar filter for each channel
-filt_options = linspace(0.1,2,60);
-
-% set up plotting
-figure; hold on; ax=gca;
-theme light;
-ylim([-50 10]);
-xlim([0 60]);
-
-% set causal LP
-cfg.s1.pipeline.filter.mode = 'fft_lp_ratio'; 
-
-SNRr = zeros(size(filt_options));
-
-for r = 1:numel(filt_options)
-    % set LP cutoff
-    cfg.s1.pipeline.filter.ratio = filt_options(r);
-
-    % run processing
-    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-
-    % store SNRe
-    SNRr(r) = out.s1.snre;
-
-    % plot fft
-    plot_fft_from_outsx(ax,out.s1,strcat('fc ratio=',num2str(cfg.s1.pipeline.filter.ratio)));
-
-    % drawnow;          % force UI refresh now
-    % pause(1);       % wait ~1 second before next call
-
-end
-% visualize SNRe trend
-figure;
-hold on; theme light;
-plot(filt_options,SNRr,LineWidth=2);
-yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
-title('Non-causal Brick Wall Filtering; LP Sweep')
-xlabel('fc');
-ylabel('SNRe');
-
-if(~independent)
-% % select + apply best filter ratio
-% [~,idx] = max(SNRr); best_N = filt_options(idx);
-% cfg.s1.pipeline.filter.N = best_N;
 % 
-% % run processing w/ best filter
-% verbose=true;
-% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-end
-
-
-% %%  manual filter sweep - boxcar
-% % set flags
-% verbose=false;
+% set flags
+% % verbose=false;
 % % S1
 % % sweep through boxcar filter for each channel
-% filt_options = [1:cfg.s1.pipeline.M+3];
-% 
-% % set up plotting
-% figure; hold on; ax=gca;
-% theme light;
-% ylim([-50 10]);
-% xlim([0 60]);
-% 
-% % set causal LP
-% cfg.s1.pipeline.filter.mode = 'boxcar'; 
-% 
-% SNRr = zeros(size(filt_options));
-% 
-% for r = 1:numel(filt_options)
-%     % set LP cutoff
-%     cfg.s1.pipeline.filter.N = filt_options(r);
-% 
-%     % run processing
-%     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-% 
-%     % store SNRe
-%     SNRr(r) = out.s1.snre;
-% 
-%     % plot fft
-%     plot_fft_from_outsx(ax,out.s1,strcat('boxcar N=',num2str(cfg.s1.pipeline.filter.N)));
-% 
-%     drawnow;          % force UI refresh now
-%     % pause(1);       % wait ~1 second before next call
-% 
-% end
-% % visualize SNRe trend
-% figure;
-% hold on; theme light;
-% plot(filt_options,SNRr);
-% yline(out.s1.snr_c,'--','DisplayName','SNRc');
-% xlabel('fc');
-% ylabel('SNRe');
-% 
-% if(~independent)
-% % % select + apply best filter ratio
-% % [~,idx] = max(SNRr); best_N = filt_options(idx);
-% % cfg.s1.pipeline.filter.N = best_N;
+% % filt_options = linspace(0.1,2,60);
 % % 
-% % % run processing w/ best filter
-% % verbose=true;
-% % out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-% end
+% % set up plotting
+% % figure; hold on; ax=gca;
+% % theme light;
+% % ylim([-50 10]);
+% % xlim([0 60]);
+% % 
+% % set causal LP
+% % cfg.s1.pipeline.filter.mode = 'fft_lp_ratio';
+% % 
+% % SNRr = zeros(size(filt_options));
+% % 
+% % for r = 1:numel(filt_options)
+% %     set LP cutoff
+% %     cfg.s1.pipeline.filter.ratio = filt_options(r);
+% % 
+% %     run processing
+% %     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% % 
+% %     store SNRe
+% %     SNRr(r) = out.s1.snre;
+% % 
+% %     plot fft
+% %     plot_fft_from_outsx(ax,out.s1,strcat('fc ratio=',num2str(cfg.s1.pipeline.filter.ratio)));
+% % 
+% %     drawnow;          % force UI refresh now
+% %     pause(1);       % wait ~1 second before next call
+% % 
+% % end
+% % visualize SNRe trend
+% % figure;
+% % hold on; theme light;
+% % plot(filt_options,SNRr,LineWidth=2);
+% % yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+% % title('Non-causal Brick Wall Filtering; LP Sweep')
+% % xlabel('fc');
+% % ylabel('SNRe');
+
 
 %% manual detrend window sweep
 
@@ -281,33 +191,32 @@ for w =1:numel(window_options)
     % store SNRe
     SNRr(w) = out.s1.snre;
 
-    % % store pipeline
-    % out.s1.pipeline = cfg.s1.pipeline;
-
-    % % plot time slice
-    % plot_time_slice_with_downsample(ax, out.s1, 'NumSamples',500)
-
-
 end
+% extract max
+[maxSNR,idx] = max(SNRr); best_window = window_options(idx);
 
 % visualize SNRe trend
 figure;
 hold on; theme light;
-plot(window_options,SNRr);
-yline(out.s1.snr_c,'--','DisplayName','SNRc');
+plot(window_options,SNRr,LineWidth=2);
+yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
 xlabel('window size');
 ylabel('SNRe');
+title(strcat('Detrend Window Optimization; Best Window=',num2str(best_window)));
 
-if(~independent)
-% select + apply best window
-[~,idx] = max(SNRr); best_window = window_options(idx);
+% apply best window configuration
 cfg.s1.pipeline.detrend.window = best_window;
 
 % run processing w/ best phase
-verbose=true;
 out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-end
 
+% report
+fprintf('\nBest Window = %.f', ...
+    best_window);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s1.snre,out.s1.adv_db);
+
+return
 
 %% manual phase sweep
 
@@ -348,13 +257,13 @@ xlabel('phase');
 ylabel('SNRe');
 
 if(~independent)
-% select + apply best phase
-[~,idx] = max(SNRr); best_phase = phase_options(idx);
-cfg.s1.pipeline.phase = best_phase;
+    % select + apply best phase
+    [~,idx] = max(SNRr); best_phase = phase_options(idx);
+    cfg.s1.pipeline.phase = best_phase;
 
-% run processing w/ best phase
-verbose=true;
-out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+    % run processing w/ best phase
+    verbose=true;
+    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
 end
 
 
@@ -392,7 +301,7 @@ p.lag = 0;
 p.trim.mode = 'none';
 p.trim.points = 0;
 
-p.filter.mode = 'fft_lp_ratio';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
+p.filter.mode = 'fft_lp_ratio_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
 p.filter.ratio = 0.6;             % cutoff = ratio * Rb
 p.filter.ratio_hp = 0.75;         % hp cutoff = ratio * Rb
 p.filter.window = 8;              % for moving_average
@@ -472,8 +381,8 @@ else
 end
 
 if(verbose)
-fprintf('%s done | run: %s | M=%d phase=%d lag=%d | SNRe=%.6f\n', ...
-    channel_name, run_dir, ch_cfg.pipeline.M, ch_cfg.pipeline.phase, ch_cfg.pipeline.lag, result.snre);
+    fprintf('%s done | run: %s | M=%d phase=%d lag=%d | SNRe=%.6f\n', ...
+        channel_name, run_dir, ch_cfg.pipeline.M, ch_cfg.pipeline.phase, ch_cfg.pipeline.lag, result.snre);
 end
 if isfinite(result.snr_c) && verbose
     fprintf('%s SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', ...
@@ -893,60 +802,69 @@ title(ax, sprintf('Time Slice with Downsample Points (%s)', o.SignalName));
 legend(ax, 'show');
 end
 
-function sx = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
-    % args
-    % sx = actual channel input structure
-    % sx_fname = dynamic field name, so oither structures with 'sx' as a
-    % field name can dynamically call it
-    % cfg = cfg struct with both channels
-    % set causal LP + HP chain
-    cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal'; 
-    
-    verbose = false;
-    % coarse grid
-    SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
-    for r_lp = 1:numel(lp)
-        % set LP cutoff
-        cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
-    
-        for r_hp = 1:numel(hp)
-            % set HP cutoff
-            cfg.(sx_fname).pipeline.filter.ratio_hp = hp(r_hp);
-    
-            % run processing
-            disp(cfg.(sx_fname).homo_channel);
-            sx = run_single_dataset(sx.run_dir, cfg.(sx_fname), sx.channel,verbose)
-        
-            % store SNRe
-            SNRr(r_lp,r_hp) = sx.snre;
-        end
-        
-    end
-    fixedMin=min(SNRr(:));
-    fixedMax=max(SNRr(:));
+function sweepr = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
+% args
+% sx = actual channel input structure
+% sx_fname = dynamic field name, so oither structures with 'sx' as a
+% field name can dynamically call it
+% cfg = cfg struct with both channels
+% set causal LP + HP chain
 
-    % pick out max
-    [maxSnr, k] = max(SNRr(:));
-    [iLP, iHP] = ind2sub(size(SNRr), k);
-    bestLP = lp(iLP);  % row axis value
-    bestHP = hp(iHP);   % col axis value
+% output: sweepr
+% only returns results of sweep - user responsibility to update
+% appropriate config struct and run post process w/ updated vals
+cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal';
 
-    if(plot_opts.visualize)
-        % visualize coarse SNRe sweep space for 2X filter chain
-        figure;
-        hold on; theme light;
-        imagesc(hp, lp, SNRr);  % cols->HP, rows->LP
-        axis xy
-        cb=colorbar; cb.Label.String = 'SNRe';
-        xlabel('HP Ratio'); ylabel('LP Ratio');
-        clim([fixedMin fixedMax]);
-        title(plot_opts.title);
-        xlim([0.2 0.7]); ylim([0.1 2]);
+verbose = false;
+% coarse grid
+SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
+for r_lp = 1:numel(lp)
+    % set LP cutoff
+    cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
 
+    for r_hp = 1:numel(hp)
+        % set HP cutoff
+        cfg.(sx_fname).pipeline.filter.ratio_hp = hp(r_hp);
 
-        plot(bestHP, bestLP, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
+        % run processing
+        sx = run_single_dataset(sx.run_dir, cfg.(sx_fname), sx.channel,verbose);
+
+        % store SNRe
+        SNRr(r_lp,r_hp) = sx.snre;
     end
 
-    sx.bestLP=bestLP;
-    sx.bestHP=bestHP;
+end
+fixedMin=min(SNRr(:));
+fixedMax=max(SNRr(:));
+
+% pick out max
+[maxSnr, k] = max(SNRr(:));
+[iLP, iHP] = ind2sub(size(SNRr), k);
+bestLP = lp(iLP);  % row axis value
+bestHP = hp(iHP);   % col axis value
+
+if(plot_opts.visualize)
+    % visualize coarse SNRe sweep space for 2X filter chain
+    figure;
+    hold on; theme light;
+    imagesc(hp, lp, SNRr);  % cols->HP, rows->LP
+    axis xy
+    cb=colorbar; cb.Label.String = 'SNRe';
+    xlabel('HP Ratio'); ylabel('LP Ratio');
+    clim([fixedMin fixedMax]);
+    title(plot_opts.title);
+    % xlim([min(hp) max(hp)]); ylim([min(lp) max(lp)]);
+
+    dx = mean(diff(hp));
+    dy = mean(diff(lp));
+
+    xlim([hp(1)-dx/2, hp(end)+dx/2])
+    ylim([lp(1)-dy/2, lp(end)+dy/2])
+    plot(bestHP, bestLP, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
+end
+
+sweepr.bestLP=bestLP;
+sweepr.bestHP=bestHP;
+sweepr.SNRr=SNRr;
+sweepr.maxSNR = maxSnr;
 end
