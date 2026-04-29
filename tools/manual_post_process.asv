@@ -1,0 +1,952 @@
+function out = manual_post_process(independent)
+%MANUAL_POST_PROCESS Manual post-processing skeleton for two explicit datasets.
+% Edit cfg.<channel>.pipeline fields to manually tune each stage.
+% args
+% independent = true | false 
+% ^ param controls: do we apply optimization from prior step to master
+% dataset before sweeping next param?
+if(nargin<1)
+    independent = false
+end
+
+
+%% Explicit dataset roots (best S1/S2 from Advantage_Data/Deterministic)
+cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+    'GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/Advantage_Data/' ...
+    'Deterministic/positive_margin_4-22_batch2/batch_2/run_00151'];
+cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+    'GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/Advantage_Data/' ...
+    'Deterministic/positive_margin_4-20/batch_4/run_01082'];
+
+%% Channel file mapping (MAC convention)
+% S1: homodyne from scope_*_2.csv, modulation from scope_*_1.csv
+% S2: homodyne from scope_*_3.csv, modulation from scope_*_4.csv
+cfg.s1.homo_channel = 2;
+cfg.s1.mod_channel = 1;
+cfg.s2.homo_channel = 3;
+cfg.s2.mod_channel = 4;
+
+%% Pipeline configuration (edit these manually)
+% Allowed stage modes are examples; add your own in helper switches below.
+cfg.s1.pipeline = default_pipeline();
+cfg.s2.pipeline = default_pipeline();
+
+% Example: start from prior best-known settings.
+cfg.s1.pipeline.M = 18;
+cfg.s1.pipeline.lag = -1;
+cfg.s1.pipeline.trim.mode = 'trim_start'; % 'none' | 'trim_start' | 'trim_end'
+cfg.s1.pipeline.trim.points = 2256;       % in downsampled points
+cfg.s1.pipeline.phase = 7;
+cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M; 
+
+cfg.s2.pipeline.M = 16;
+cfg.s2.pipeline.lag = 1;
+cfg.s2.pipeline.trim.mode = 'trim_end';
+cfg.s2.pipeline.trim.points = 2592;
+cfg.s2.pipeline.phase = 5;
+
+% Run both datasets
+verbose=true;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',verbose);
+out.cfg = cfg; % return cfg for debugging
+
+
+%% ---- pipeline manual sweep per channel ----
+
+% first, focus on S1, then apply everything to S2 later
+
+%%  manual filter sweep - LP + HP chain
+% set flags
+verbose=false;
+
+% S1
+% coarse grid search
+num_fopt = 5;
+lp1 = linspace(0.1,2,num_fopt);
+hp1 = linspace(0.2,0.7,num_fopt);
+
+plot_opts = struct();
+plot_opts.visualize = true;
+plot_opts.title= 'Coarse Search';
+out.s1 = filter_grid_search(lp1,hp1,out.s1,'s1',cfg,plot_opts);
+out.s1
+return
+
+
+% fine grid sweep
+% locate ridge window from top percentile
+prc = 10;
+thr = prctile(SNRr(:), 100-prc);      % top prc%
+[r,c] = find(SNRr >= thr);
+
+lp_lo = max(min(lp1(r)) - prc/1e2, min(lp1));
+lp_hi = min(max(lp1(r)) + prc/1e2, max(lp1));
+hp_lo = max(min(hp1(c)) - prc/1e2, min(hp1));
+hp_hi = min(max(hp1(c)) + prc/1e2, max(hp1));
+
+% --- pass 2: fine near transition ---
+lp2 = linspace(lp_lo, lp_hi, 2*num_fopt);
+hp2 = linspace(hp_lo, hp_hi, 2*num_fopt);
+SNRr_fine = nan(numel(lp2),numel(hp2));
+
+for r_lp = 1:numel(lp2)
+    % set LP cutoff
+    cfg.s1.pipeline.filter.ratio = lp2(r_lp);
+
+    for r_hp = 1:numel(hp2)
+        % set HP cutoff
+        cfg.s1.pipeline.filter.ratio_hp = hp2(r_hp);
+
+        % run processing
+        out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+    
+        % store SNRe
+        SNRr_fine(r_lp,r_hp) = out.s1.snre;
+    end
+    
+end
+
+% visualize fine map
+figure; imagesc(hp2, lp2, SNRr_fine); axis xy; hold on
+xlabel('HP Ratio'); ylabel('LP Ratio'); colorbar
+title('Fine scan near bright ridge')
+
+% pick out max
+[maxSnrFine, k] = max(SNRr_fine(:));
+[iLP, iHP] = ind2sub(size(SNRr_fine), k);
+bestLPfine = lp2(iLP);  % row axis value
+bestHPfine = hp2(iHP);  % col axis value
+plot(bestHPfine, bestLPfine, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
+
+% apply best filters
+cfg.s1.pipeline.filter.ratio = bestLPfine;
+cfg.s1.pipeline.filter.ratio_hp = bestHPfine;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+% report
+fprintf('\nFine scan best:\nLP ratio = %.5f, HP ratio = %.5f', ...
+    bestLPfine, bestHPfine);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f', ...
+    maxSnrFine,out.s1.adv_db);
+
+figure;ax=gca; grid off; theme light;
+plot_fft_from_outsx(ax,out.s1,strcat("fc_lp=",num2str(round(bestLPfine,3)),";fc_hp=",num2str(round(bestHPfine,3))));
+xlim([0 40]); ylim([-80 1]);
+title('fft: optimized causal bandpass filter')
+
+return
+
+
+if(~independent)
+    % TODO select best filter combo
+
+% % select + apply best filter ratio
+% [~,idx] = max(SNRr); best_ratio = filt_options_lp(idx);
+% cfg.s1.pipeline.filter.ratio = best_ratio;
+% 
+% % run processing w/ best filter
+% verbose=true;
+% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+end
+
+%% manual filter sweep - non causal
+% set flags
+verbose=false;
+% S1
+% sweep through boxcar filter for each channel
+filt_options = linspace(0.1,2,60);
+
+% set up plotting
+figure; hold on; ax=gca;
+theme light;
+ylim([-50 10]);
+xlim([0 60]);
+
+% set causal LP
+cfg.s1.pipeline.filter.mode = 'fft_lp_ratio'; 
+
+SNRr = zeros(size(filt_options));
+
+for r = 1:numel(filt_options)
+    % set LP cutoff
+    cfg.s1.pipeline.filter.ratio = filt_options(r);
+
+    % run processing
+    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+    % store SNRe
+    SNRr(r) = out.s1.snre;
+
+    % plot fft
+    plot_fft_from_outsx(ax,out.s1,strcat('fc ratio=',num2str(cfg.s1.pipeline.filter.ratio)));
+
+    % drawnow;          % force UI refresh now
+    % pause(1);       % wait ~1 second before next call
+
+end
+% visualize SNRe trend
+figure;
+hold on; theme light;
+plot(filt_options,SNRr,LineWidth=2);
+yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+title('Non-causal Brick Wall Filtering; LP Sweep')
+xlabel('fc');
+ylabel('SNRe');
+
+if(~independent)
+% % select + apply best filter ratio
+% [~,idx] = max(SNRr); best_N = filt_options(idx);
+% cfg.s1.pipeline.filter.N = best_N;
+% 
+% % run processing w/ best filter
+% verbose=true;
+% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+end
+
+
+% %%  manual filter sweep - boxcar
+% % set flags
+% verbose=false;
+% % S1
+% % sweep through boxcar filter for each channel
+% filt_options = [1:cfg.s1.pipeline.M+3];
+% 
+% % set up plotting
+% figure; hold on; ax=gca;
+% theme light;
+% ylim([-50 10]);
+% xlim([0 60]);
+% 
+% % set causal LP
+% cfg.s1.pipeline.filter.mode = 'boxcar'; 
+% 
+% SNRr = zeros(size(filt_options));
+% 
+% for r = 1:numel(filt_options)
+%     % set LP cutoff
+%     cfg.s1.pipeline.filter.N = filt_options(r);
+% 
+%     % run processing
+%     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% 
+%     % store SNRe
+%     SNRr(r) = out.s1.snre;
+% 
+%     % plot fft
+%     plot_fft_from_outsx(ax,out.s1,strcat('boxcar N=',num2str(cfg.s1.pipeline.filter.N)));
+% 
+%     drawnow;          % force UI refresh now
+%     % pause(1);       % wait ~1 second before next call
+% 
+% end
+% % visualize SNRe trend
+% figure;
+% hold on; theme light;
+% plot(filt_options,SNRr);
+% yline(out.s1.snr_c,'--','DisplayName','SNRc');
+% xlabel('fc');
+% ylabel('SNRe');
+% 
+% if(~independent)
+% % % select + apply best filter ratio
+% % [~,idx] = max(SNRr); best_N = filt_options(idx);
+% % cfg.s1.pipeline.filter.N = best_N;
+% % 
+% % % run processing w/ best filter
+% % verbose=true;
+% % out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% end
+
+%% manual detrend window sweep
+
+% options
+window_options = [1:5*cfg.s1.pipeline.M];
+SNRr = zeros(size(window_options));
+verbose=false;
+
+% mode for intra-bit window sizes
+cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
+
+% figure creation
+% figure; hold on; ax=gca;
+
+for w =1:numel(window_options)
+
+    cfg.s1.pipeline.detrend.window = window_options(w);
+
+    % run processing
+    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+    % store SNRe
+    SNRr(w) = out.s1.snre;
+
+    % % store pipeline
+    % out.s1.pipeline = cfg.s1.pipeline;
+
+    % % plot time slice
+    % plot_time_slice_with_downsample(ax, out.s1, 'NumSamples',500)
+
+
+end
+
+% visualize SNRe trend
+figure;
+hold on; theme light;
+plot(window_options,SNRr);
+yline(out.s1.snr_c,'--','DisplayName','SNRc');
+xlabel('window size');
+ylabel('SNRe');
+
+if(~independent)
+% select + apply best window
+[~,idx] = max(SNRr); best_window = window_options(idx);
+cfg.s1.pipeline.detrend.window = best_window;
+
+% run processing w/ best phase
+verbose=true;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+end
+
+
+%% manual phase sweep
+
+% options
+phase_options = [1:cfg.s1.pipeline.M];
+SNRr = zeros(size(phase_options));
+verbose=false;
+
+% figure creation
+% figure; hold on; ax=gca;
+
+for p =1:numel(phase_options)
+
+    phase = phase_options(p);
+    cfg.s1.pipeline.phase = phase;
+
+    % run processing
+    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+    % store SNRe
+    SNRr(p) = out.s1.snre;
+
+    % store pipeline
+    out.s1.pipeline = cfg.s1.pipeline;
+
+    % plot time slice
+    % plot_time_slice_with_downsample(ax, out.s1, 'NumSamples',500)
+
+
+end
+
+% visualize SNRe trend
+figure;
+hold on; theme light;
+plot(phase_options,SNRr);
+yline(out.s1.snr_c,'--','DisplayName','SNRc');
+xlabel('phase');
+ylabel('SNRe');
+
+if(~independent)
+% select + apply best phase
+[~,idx] = max(SNRr); best_phase = phase_options(idx);
+cfg.s1.pipeline.phase = best_phase;
+
+% run processing w/ best phase
+verbose=true;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+end
+
+
+%% Simple summary
+fprintf('\nManual post-processing summary\n');
+fprintf('S1 SNRe: %.6f (N=%d)\n', out.s1.snre, out.s1.n_points);
+fprintf('S2 SNRe: %.6f (N=%d)\n', out.s2.snre, out.s2.n_points);
+if isfield(out.s1, 'snr_c') && isfinite(out.s1.snr_c)
+    fprintf('S1 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s1.snr_c, out.s1.margin, out.s1.adv_db);
+else
+    fprintf('S1 SNRc: n/a (processed_summary.json missing or invalid)\n');
+end
+if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
+    fprintf('S2 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s2.snr_c, out.s2.margin, out.s2.adv_db);
+else
+    fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
+end
+end
+
+function p = default_pipeline()
+
+p.detrend.mode = 'movmean_subtract'; % 'none' | 'movmean_subtract'
+p.detrend.window_mult_M = 2;
+
+p.clip.mode = 'none';             % 'none' | 'winsor'
+p.clip.q = 0.005;
+
+p.threshold.mode = 'mean';        % 'mean' | 'median'
+p.invert_bits = true;
+
+p.metric = 'asym_xp';             % 'asym_xp' | 'asym_sym'
+p.M = 16;
+p.phase = 0;
+p.lag = 0;
+p.trim.mode = 'none';
+p.trim.points = 0;
+
+p.filter.mode = 'fft_lp_ratio';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
+p.filter.ratio = 0.6;             % cutoff = ratio * Rb
+p.filter.ratio_hp = 0.75;         % hp cutoff = ratio * Rb
+p.filter.window = 8;              % for moving_average
+p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
+p.filter.N = p.M;                 % for boxcar window length
+end
+
+function result = run_single_dataset(run_dir, ch_cfg, channel_name,verbose)
+[homo_path, mod_path] = resolve_scope_paths(run_dir, ch_cfg.homo_channel, ch_cfg.mod_channel);
+[t_h, x_h] = read_scope_csv(homo_path);
+[t_m, x_m] = read_scope_csv(mod_path);
+
+assert(numel(t_h) == numel(x_h), 'Invalid homodyne data shape.');
+assert(numel(t_m) == numel(x_m), 'Invalid modulation data shape.');
+
+fs = infer_fs(t_h);
+Rb = fs / ch_cfg.pipeline.M;
+
+% Stage 1: filtering
+x_f = apply_filter_stage(x_h, fs, Rb, ch_cfg.pipeline.filter);
+
+% Stage 2: detrending
+x_d = apply_detrend_stage(x_f, ch_cfg.pipeline.M, ch_cfg.pipeline.detrend);
+% % skip detrend
+% x_d = x_f;
+
+% Stage 3: clipping / outlier handling
+% x_c = apply_clip_stage(x_d, ch_cfg.pipeline.clip);
+% skip clip
+x_c = x_d;
+
+% Stage 4: lag alignment
+% [x_l, m_l] = apply_lag_stage(x_c, x_m, ch_cfg.pipeline.lag);
+% skip lag
+x_l = x_c;
+m_l = x_m;
+
+% Stage 5: trimming
+% [x_t, m_t] = apply_trim_stage(x_l, m_l, ch_cfg.pipeline.M, ch_cfg.pipeline.trim);
+%skip trim
+x_t = x_l;
+m_t = m_l;
+
+
+% Stage 6: phase-select and downsample
+[xs, ms] = downsample_with_phase(x_t, m_t, ch_cfg.pipeline.phase, ch_cfg.pipeline.M);
+
+
+% Stage 7: threshold and class split
+bits = threshold_bits(ms, ch_cfg.pipeline.threshold.mode, ch_cfg.pipeline.invert_bits);
+xp = xs(bits);
+xm = xs(~bits);
+
+% Stage 8: SNRe estimation
+metrics = compute_snre_metrics(xp, xm);
+result.snre = metrics.(ch_cfg.pipeline.metric);
+result.metrics = metrics;
+result.n_points = numel(xs);
+result.fs = fs;
+result.rb = Rb;
+result.run_dir = run_dir;
+result.channel = channel_name;
+result.paths.homo = homo_path;
+result.paths.mod = mod_path;
+result.debug.raw = x_h;
+result.debug.filtered = x_f;
+result.debug.after_trim = x_t;
+
+% Optional: retrieve classical SNR (SNRc) from processed_summary.json.
+[result.snr_c, result.snr_c_source] = load_snr_c_from_processed_summary(run_dir, channel_name);
+if isfinite(result.snr_c)
+    result.margin = result.snre - result.snr_c;
+    result.adv_db = 10 * log10(max(result.snre, eps) / result.snr_c);
+else
+    result.margin = nan;
+    result.adv_db = nan;
+end
+
+if(verbose)
+fprintf('%s done | run: %s | M=%d phase=%d lag=%d | SNRe=%.6f\n', ...
+    channel_name, run_dir, ch_cfg.pipeline.M, ch_cfg.pipeline.phase, ch_cfg.pipeline.lag, result.snre);
+end
+if isfinite(result.snr_c) && verbose
+    fprintf('%s SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', ...
+        channel_name, result.snr_c, result.margin, result.adv_db);
+elseif verbose
+    fprintf('%s SNRc: n/a (processed_summary.json missing or invalid)\n', channel_name);
+end
+end
+
+
+function [homo_path, mod_path] = resolve_scope_paths(run_dir, homo_ch, mod_ch)
+homo_matches = dir(fullfile(run_dir, sprintf('scope_*_%d.csv', homo_ch)));
+mod_matches = dir(fullfile(run_dir, sprintf('scope_*_%d.csv', mod_ch)));
+assert(~isempty(homo_matches), 'No homodyne scope file found in %s', run_dir);
+assert(~isempty(mod_matches), 'No modulation scope file found in %s', run_dir);
+homo_path = fullfile(homo_matches(1).folder, homo_matches(1).name);
+mod_path = fullfile(mod_matches(1).folder, mod_matches(1).name);
+end
+
+function [t, x] = read_scope_csv(path)
+mat = readmatrix(path, 'NumHeaderLines', 4);
+assert(size(mat,2) >= 2, 'Scope CSV has <2 columns: %s', path);
+t = mat(:,1);
+x = mat(:,2);
+end
+
+function fs = infer_fs(t)
+assert(numel(t) >= 3, 'Need at least 3 time points to infer fs.');
+dt = mean(diff(t(1:min(end,1000))));
+fs = 1.0 / dt;
+end
+
+function y = apply_filter_stage(x, fs, Rb, fcfg)
+switch lower(string(fcfg.mode))
+    case "none"
+        y = x;
+    case "fft_lp_ratio"
+        cutoff = fcfg.ratio * Rb;
+        y = fft_lowpass(x, fs, cutoff);
+
+    case "ratio_hp_lp_causal"
+        % low pass
+        cutoff = fcfg.ratio * Rb;
+        [b,a] = butter(15,cutoff/(fs/2),"low");
+        y = filter(b,a,x);
+
+        % high pass
+        cutoff = fcfg.ratio_hp * Rb;
+        [b,a] = butter(3,cutoff/(fs/2),"high");
+        y = filter(b,a,y);
+
+    case "fft_lp_ratio_causal"
+        cutoff = fcfg.ratio * Rb;
+        [b,a] = butter(15,cutoff/(fs/2),"low");
+        y = filter(b,a,x);
+
+    case "moving_average"
+        w = max(1, round(fcfg.window));
+        y = movmean(x, w);
+    case "causal_1pole_lp"
+        y = causal_one_pole_lowpass(x, fs, fcfg.cutoff_hz);
+    case "boxcar"
+        b = ones(1,fcfg.N)/fcfg.N; a=1;
+        y = filter(b,a,x);
+    otherwise
+        error('Unknown filter mode: %s', string(fcfg.mode));
+end
+end
+
+function y = apply_detrend_stage(x, M, dcfg)
+switch lower(string(dcfg.mode))
+    case "none"
+        y = x;
+    case "movmean_subtract"
+        w = max(3, round(dcfg.window_mult_M * M));
+        y = x - movmean(x, w);
+    case "custom_movmean_subtract"
+        w = dcfg.window;
+        y = x - movmean(x,w);
+    otherwise
+        error('Unknown detrend mode: %s', string(dcfg.mode));
+end
+end
+
+function y = apply_clip_stage(x, ccfg)
+switch lower(string(ccfg.mode))
+    case "none"
+        y = x;
+    case "winsor"
+        q = ccfg.q;
+        lo = quantile(x, q);
+        hi = quantile(x, 1-q);
+        y = min(max(x, lo), hi);
+    otherwise
+        error('Unknown clip mode: %s', string(ccfg.mode));
+end
+end
+
+function [x2, m2] = apply_lag_stage(x, m, lag)
+if lag > 0
+    x2 = x(1:end-lag);
+    m2 = m(1+lag:end);
+elseif lag < 0
+    k = -lag;
+    x2 = x(1+k:end);
+    m2 = m(1:end-k);
+else
+    x2 = x;
+    m2 = m;
+end
+n = min(numel(x2), numel(m2));
+x2 = x2(1:n);
+m2 = m2(1:n);
+end
+
+function [x2, m2] = apply_trim_stage(x, m, M, tcfg)
+mode = lower(string(tcfg.mode));
+trim_raw = round(tcfg.points * M);
+n = min(numel(x), numel(m));
+x = x(1:n);
+m = m(1:n);
+
+switch mode
+    case "none"
+        idx = 1:n;
+    case "trim_start"
+        idx = (1+trim_raw):n;
+    case "trim_end"
+        idx = 1:(n-trim_raw);
+    otherwise
+        error('Unknown trim mode: %s', string(tcfg.mode));
+end
+
+assert(~isempty(idx), 'Trim removed all points.');
+x2 = x(idx);
+m2 = m(idx);
+end
+
+function [xs, ms] = downsample_with_phase(x, m, phase, M)
+phase = mod(phase, M);
+idx = (1+phase):M:numel(x);
+xs = x(idx);
+ms = m(idx);
+end
+
+function bits = threshold_bits(m, threshold_mode, invert_bits)
+switch lower(string(threshold_mode))
+    case "mean"
+        th = mean(m);
+    case "median"
+        th = median(m);
+    otherwise
+        error('Unknown threshold mode: %s', string(threshold_mode));
+end
+bits = m > th;
+if invert_bits
+    bits = ~bits;
+end
+end
+
+function metrics = compute_snre_metrics(xp, xm)
+assert(~isempty(xp) && ~isempty(xm), 'Class split is empty. Adjust threshold/phase/lag.');
+mu_p = mean(xp);
+mu_m = mean(xm);
+var_p = var(xp, 1);
+var_m = var(xm, 1);
+dmu2 = (abs(mu_p - mu_m))^2;
+metrics.asym_xp = dmu2 / (4*var_p + eps);
+metrics.asym_sym = dmu2 / (2*(var_p + var_m) + eps);
+end
+
+function y = fft_lowpass(x, fs, cutoff_hz)
+if cutoff_hz <= 0
+    y = zeros(size(x));
+    return;
+end
+n = numel(x);
+f = (0:floor(n/2))' * (fs / n);
+X = fft(x);
+Xr = X(1:numel(f));
+mask = (f <= cutoff_hz);
+Xr_filt = Xr .* mask;
+
+if rem(n,2) == 0
+    Xfull = [Xr_filt; conj(Xr_filt(end-1:-1:2))];
+else
+    Xfull = [Xr_filt; conj(Xr_filt(end:-1:2))];
+end
+
+y = real(ifft(Xfull));
+end
+
+function y = causal_one_pole_lowpass(x, fs, cutoff_hz)
+if cutoff_hz <= 0
+    y = zeros(size(x));
+    return;
+end
+dt = 1/fs;
+tau = 1/(2*pi*cutoff_hz);
+alpha = dt / (tau + dt);
+y = zeros(size(x));
+y(1) = x(1);
+for k = 2:numel(x)
+    y(k) = y(k-1) + alpha*(x(k)-y(k-1));
+end
+end
+
+function h = plot_fft_from_outsx(ax, sx, label_name)
+%PLOT_FFT_FROM_OUTSX Plot one-sided FFT from out.sx onto existing axes.
+% Usage:
+%   plot_fft_from_outsx(ax, out.s1)                       % default: after_trim
+%   plot_fft_from_outsx(ax, out.s1, 'raw', 'S1 raw')
+%   plot_fft_from_outsx(ax, out.s1, 'filtered', 'S1 filt')
+
+
+if nargin < 3 || isempty(label_name)
+    label_name = '';
+end
+
+signal_name = 'filtered'; % 'raw' | 'filtered' | 'after_trim'
+
+% Pull signal from sx.debug.<signal_name>
+assert(isfield(sx, 'debug') && isfield(sx.debug, signal_name), ...
+    'sx.debug.%s not found.', signal_name);
+x = sx.debug.(signal_name);
+fs = sx.fs;
+
+x = x(:) - mean(x, 'omitnan');
+n = numel(x);
+assert(n > 8, 'Signal too short for FFT.');
+
+% Window + one-sided spectrum
+w = hann(n);
+X = fft(x .* w);
+k = floor(n/2) + 1;
+X = X(1:k);
+f = (0:k-1)' * (fs / n);
+
+mag = abs(X);
+mag = mag ./ (max(mag) + eps);              % normalize to 0 dB peak
+mag_db = 20 * log10(max(mag, 1e-12));       % floor for plotting
+
+hold(ax, 'on');
+h = plot(ax, f/1e3, mag_db, 'LineWidth', 1.2, 'DisplayName', label_name);
+
+
+% Optional bit-rate marker if present
+% if isfield(sx, 'rb') && ~isempty(sx.rb) && isfinite(sx.rb)
+%     xline(ax, sx.rb/1e3, '--', 'Color', [0.2 0.2 0.2], ...
+%         'LineWidth', 1.0, 'DisplayName', sprintf('%s R_b', label_name));
+% end
+
+grid(ax, 'on');
+xlabel(ax, 'Frequency (kHz)');
+ylabel(ax, 'Magnitude (dB, normalized)');
+legend;
+end
+
+function [snr_c, source] = load_snr_c_from_processed_summary(run_dir, channel_name)
+%LOAD_SNRC_FROM_PROCESSED_SUMMARY Read SNR_C for a selected run/channel.
+snr_c = nan;
+source = 'missing';
+p = fullfile(run_dir, 'processed_summary.json');
+if ~isfile(p)
+    return;
+end
+try
+    j = jsondecode(fileread(p));
+    if isfield(j, channel_name) && isstruct(j.(channel_name)) && isfield(j.(channel_name), 'SNR_C')
+        snr_c = double(j.(channel_name).SNR_C);
+        source = p;
+    else
+        source = 'invalid_structure';
+    end
+catch
+    source = 'parse_error';
+end
+end
+
+function h = plot_time_slice_with_downsample(ax, sx, varargin)
+%PLOT_TIME_SLICE_WITH_DOWNSAMPLE Visualize a time-domain slice + downsample points.
+%
+% Required:
+%   ax : axes handle
+%   sx : output struct from run_single_dataset / manual_post_process (e.g., out.s1)
+%
+% Name-value options:
+%   'SignalName'   : 'raw' | 'filtered' | 'after_trim'   (default: 'after_trim')
+%   'StartIndex'   : 1-based slice start index           (default: 1)
+%   'NumSamples'   : number of samples in slice          (default: 2000)
+%   'Color'        : line color for waveform             (default: [0 0.447 0.741])
+%   'MarkerColor'  : color for downsample markers        (default: [0.850 0.325 0.098])
+%   'LineWidth'    : waveform line width                 (default: 1.1)
+%   'MarkerSize'   : marker size                         (default: 24)
+%   'ShowBitColor' : true/false color markers by bit     (default: true)
+%
+% Notes:
+% - Uses sx.debug.<SignalName> for waveform.
+% - Uses sx.pipeline (if present) or sx.M/sx.phase for downsample indexing.
+% - If modulation is unavailable in sx.debug, bit coloring is skipped.
+
+% -------- Parse inputs --------
+p = inputParser;
+p.addParameter('SignalName', 'after_trim');
+p.addParameter('StartIndex', 1);
+p.addParameter('NumSamples', 2000);
+p.addParameter('Color', [0 0.447 0.741]);
+p.addParameter('MarkerColor', [0.850 0.325 0.098]);
+p.addParameter('LineWidth', 1.1);
+p.addParameter('MarkerSize', 24);
+p.addParameter('ShowBitColor', true);
+p.parse(varargin{:});
+o = p.Results;
+
+% assert(isgraphics(ax, 'axes'), 'ax must be a valid axes handle.');
+% assert(isfield(sx, 'debug') && isfield(sx.debug, o.SignalName), ...
+%     'sx.debug.%s not found.', o.SignalName);
+
+x = sx.debug.(o.SignalName);
+x = x(:);
+n = numel(x);
+
+i1 = max(1, round(o.StartIndex));
+i2 = min(n, i1 + round(o.NumSamples) - 1);
+assert(i2 >= i1, 'Invalid slice bounds.');
+
+idx_slice = (i1:i2).';
+x_slice = x(idx_slice);
+
+% Fs/time axis
+if isfield(sx, 'fs') && ~isempty(sx.fs) && isfinite(sx.fs)
+    fs = sx.fs;
+    t_slice = (idx_slice - 1) / fs;
+    xLabelText = 'Time (s)';
+else
+    fs = [];
+    t_slice = idx_slice;
+    xLabelText = 'Sample Index';
+end
+
+% -------- Get M and phase --------
+M = [];
+ph = [];
+
+if isfield(sx, 'pipeline') && isstruct(sx.pipeline)
+    if isfield(sx.pipeline, 'M'), M = sx.pipeline.M; end
+    if isfield(sx.pipeline, 'phase'), ph = sx.pipeline.phase; end
+end
+if isempty(M) && isfield(sx, 'M'), M = sx.M; end
+if isempty(ph) && isfield(sx, 'phase'), ph = sx.phase; end
+
+assert(~isempty(M) && ~isempty(ph), ...
+    'Could not find M/phase in sx. Add sx.pipeline.M and sx.pipeline.phase (or sx.M/sx.phase).');
+
+M = round(M);
+ph = mod(round(ph), M);
+
+% -------- Downsample indices over full signal --------
+idx_ds_full = (1 + ph):M:n;
+in_slice = idx_ds_full >= i1 & idx_ds_full <= i2;
+idx_ds = idx_ds_full(in_slice).';
+x_ds = x(idx_ds);
+
+if isempty(fs)
+    t_ds = idx_ds;
+else
+    t_ds = (idx_ds - 1) / fs;
+end
+
+% -------- Optional bit coloring --------
+bits = [];
+if o.ShowBitColor
+    if isfield(sx.debug, 'mod_after_trim')
+        m = sx.debug.mod_after_trim(:);
+        if numel(m) == n
+            if isfield(sx, 'threshold_mode')
+                thMode = string(sx.threshold_mode);
+            else
+                thMode = "mean";
+            end
+            if thMode == "median"
+                th = median(m);
+            else
+                th = mean(m);
+            end
+            b = m > th;
+            if isfield(sx, 'invert_bits') && sx.invert_bits
+                b = ~b;
+            end
+            bits = b(idx_ds);
+        end
+    end
+end
+
+% -------- Plot --------
+hold(ax, 'on');
+% h.wave = plot(ax, t_slice, x_slice, 'LineWidth', o.LineWidth, 'Color', o.Color, ...
+%     'DisplayName', sprintf('%s slice', o.SignalName));
+h.wave = plot(ax, t_slice, x_slice, 'LineWidth', o.LineWidth, 'Color', o.Color, ...
+    'HandleVisibility','off')
+if isempty(bits)
+    h.ds = scatter(ax, t_ds, x_ds, o.MarkerSize, 'filled', ...
+        'DisplayName', sprintf('Downsampled (M=%d, ph=%d)', M, ph));
+else
+    c0 = [0.2 0.2 0.2];      % bit 0
+    c1 = [0.85 0.1 0.1];     % bit 1
+    h.ds0 = scatter(ax, t_ds(~bits), x_ds(~bits), o.MarkerSize, 'filled', ...
+        'DisplayName', 'Downsample bit=0');
+    h.ds1 = scatter(ax, t_ds(bits),  x_ds(bits),  o.MarkerSize, 'filled', ...
+        'DisplayName', 'Downsample bit=1');
+end
+
+grid(ax, 'on');
+xlabel(ax, xLabelText);
+ylabel(ax, 'Amplitude');
+title(ax, sprintf('Time Slice with Downsample Points (%s)', o.SignalName));
+legend(ax, 'show');
+end
+
+function sx = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
+    % args
+    % sx = actual channel input structure
+    % sx_fname = dynamic field name, so oither structures with 'sx' as a
+    % field name can dynamically call it
+    % cfg = cfg struct with both channels
+    % set causal LP + HP chain
+    cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal'; 
+    
+    verbose = false;
+    % coarse grid
+    SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
+    for r_lp = 1:numel(lp)
+        % set LP cutoff
+        cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
+    
+        for r_hp = 1:numel(hp)
+            % set HP cutoff
+            cfg.(sx_fname).pipeline.filter.ratio_hp = hp(r_hp);
+    
+            % run processing
+            disp(cfg.(sx_fname).homo_channel);
+            sx = run_single_dataset(sx.run_dir, cfg.(sx_fname), sx.channel,verbose)
+        
+            % store SNRe
+            SNRr(r_lp,r_hp) = sx.snre;
+        end
+        
+    end
+    fixedMin=min(SNRr(:));
+    fixedMax=max(SNRr(:));
+
+    % pick out max
+    [maxSnr, k] = max(SNRr(:));
+    [iLP, iHP] = ind2sub(size(SNRr), k);
+    bestLP = lp(iLP);  % row axis value
+    bestHP = hp(iHP);   % col axis value
+
+    if(plot_opts.visualize)
+        % visualize coarse SNRe sweep space for 2X filter chain
+        figure;
+        hold on; theme light;
+        imagesc(hp, lp, SNRr);  % cols->HP, rows->LP
+        axis xy
+        cb=colorbar; cb.Label.String = 'SNRe';
+        xlabel('HP Ratio'); ylabel('LP Ratio');
+        clim([fixedMin fixedMax]);
+        title(plot_opts.title);
+        xlim([0.2 0.7]); ylim([0.1 2]);
+
+
+        plot(bestHP, bestLP, 'rx', 'MarkerSize', 12, 'LineWidth', 2);
+    end
+
+    sx.bestLP=bestLP;
+    sx.bestHP=bestHP;
+end
