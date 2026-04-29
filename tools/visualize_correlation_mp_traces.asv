@@ -1,0 +1,122 @@
+% Visualize multiple correlation MP frequency traces on one plot.
+%
+% This script discovers f_trace_BH*_S1*_S2*.txt files, lets you choose
+% which traces to plot, then applies the colors configured below.
+
+clear; clc;
+
+traceDir = '/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/correlation_mp_traces';
+filePattern = fullfile(traceDir, 'f_trace_BH*_S1*_S2*.txt');
+
+% Set trace colors here as RGB triples in the 0-to-1 MATLAB format.
+% Labels must match the legend labels parsed from the filenames.
+traceColorMap = containers.Map();
+traceColorMap('BH1 S1a S2a') = hex2rgb('#0B1340'); % void indigo
+traceColorMap('BH1 S1a S2p') = hex2rgb('#243FA3'); % photon indigo
+traceColorMap('BH1 S1p S2p') = hex2rgb('#7B9EEB'); % diffraction blue
+traceColorMap('BH1 S1p S2a') = hex2rgb('#C9D8F8'); % stellar haze
+
+traceColorMap('BH2 S1a S2a') = hex2rgb('#003540'); % abyss teal
+traceColorMap('BH2 S1a S2p') = hex2rgb('#007A82'); % emission teal
+traceColorMap('BH2 S1p S2a') = hex2rgb('#62D0D8'); % laser cyan
+traceColorMap('BH2 S1p S2p') = hex2rgb('#B8EFF3'); % interference mint
+
+files = dir(filePattern);
+if isempty(files)
+    error('No trace files found in: %s', traceDir);
+end
+
+labels = strings(numel(files), 1);
+sortKeys = strings(numel(files), 1);
+for ii = 1:numel(files)
+    [labels(ii), sortKeys(ii)] = labelFromTraceFilename(files(ii).name);
+end
+
+[~, order] = sort(sortKeys);
+files = files(order);
+labels = labels(order);
+
+defaultSelection = 1:numel(files);
+[selectedIdx, ok] = listdlg( ...
+    'PromptString', 'Select frequency traces to plot:', ...
+    'SelectionMode', 'multiple', ...
+    'ListString', cellstr(labels), ...
+    'InitialValue', defaultSelection, ...
+    'ListSize', [320, 220], ...
+    'Name', 'Correlation MP Trace Visualizer');
+
+if ~ok || isempty(selectedIdx)
+    fprintf('No traces selected. Exiting.\n');
+    return;
+end
+
+selectedFiles = files(selectedIdx);
+selectedLabels = labels(selectedIdx);
+
+defaultColors = lines(numel(selectedFiles));
+traceColors = defaultColors;
+
+for ii = 1:numel(selectedFiles)
+    labelKey = char(selectedLabels(ii));
+    if isKey(traceColorMap, labelKey)
+        traceColors(ii, :) = traceColorMap(labelKey);
+    end
+end
+
+fig = figure('Name', 'Correlation Multiplexing Frequency Traces', 'Color', 'w');
+subplotTitle
+subplot(1,2,1);
+ax=style(gca,'Channel 1 Homodyne');
+for ii = 1:numel(selectedFiles)
+    tracePath = fullfile(selectedFiles(ii).folder, selectedFiles(ii).name);
+    traceData = readmatrix(tracePath, 'FileType', 'text', 'CommentStyle', '#');
+
+    if size(traceData, 2) < 2
+        warning('Skipping %s: expected at least two numeric columns.', selectedFiles(ii).name);
+        continue;
+    end
+
+    frequencyHz = traceData(:, 1);
+    amplitudeDbv = traceData(:, 2);
+
+    if(ii==5)
+        subplot(1,2,2);
+        ax=style(gca);
+    end
+
+    plot(ax, frequencyHz, amplitudeDbv, ...
+        'LineWidth', 1.7, ...
+        'Color', traceColors(ii, :), ...
+        'DisplayName', selectedLabels(ii));
+end
+
+
+
+fprintf('Plotted %d trace(s) from:\n%s\n', numel(selectedFiles), traceDir);
+
+function [label, sortKey] = labelFromTraceFilename(filename)
+    tokens = regexp(filename, 'f_trace_(BH[^_]+)_(S1[^_]+)_(S2[^.]+)\.txt$', 'tokens', 'once');
+    if isempty(tokens)
+        [~, baseName] = fileparts(filename);
+        label = string(baseName);
+        sortKey = string(baseName);
+        return;
+    end
+
+    label = string(strjoin(tokens, ' '));
+    sortKey = string(strjoin(tokens, '_'));
+end
+
+function ax = style(ax,subplotTitle)
+hold(ax,'on');
+grid(ax, 'off');
+box(ax, 'on');
+xlabel(ax, 'Frequency (Hz)');
+ylabel(ax, 'Amplitude (dBV)');
+title(ax, subplotTitle);
+legend(ax, 'Location', 'best', 'Interpreter', 'none');
+xlim([7.5e3 9.5e3]);
+theme('light');
+set(gca,"FontSize",12);
+set(gca,"FontWeight",'bold');
+end

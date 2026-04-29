@@ -673,10 +673,6 @@ hXm = histogram(axHist, Xm_hist, 70, 'DisplayName', 'X^-', 'FaceColor', styles.h
 
 [cXp_hist, cXm_hist, hasClassicalHist] = generateClassicalHistogramSamples( ...
     Xp_hist, Xm_hist, info.SNR_C, runIdx, channelName);
-
-%override
-hasClassicalHist=false;
-
 if hasClassicalHist
     hCXp = histogram(axHist, cXp_hist, 'BinEdges', hXp.BinEdges, ...
         'DisplayName', 'Classical X^+', ...

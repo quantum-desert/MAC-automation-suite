@@ -164,6 +164,9 @@ end
 if ~isfield(opts, 'showCoherentConstraintLines') || isempty(opts.showCoherentConstraintLines)
     opts.showCoherentConstraintLines = true;
 end
+if ~isfield(opts, 'showTwoInterceptGuide') || isempty(opts.showTwoInterceptGuide)
+    opts.showTwoInterceptGuide = true;
+end
 if ~isfield(opts, 'showPolygonClosureLines') || isempty(opts.showPolygonClosureLines)
     opts.showPolygonClosureLines = true;
 end
@@ -222,6 +225,7 @@ opts.hwJointHistBins = max(8, round(double(opts.hwJointHistBins)));
 opts.showEAOuterBound = logical(opts.showEAOuterBound);
 opts.showExperimentalJointRegion = logical(opts.showExperimentalJointRegion);
 opts.showCoherentConstraintLines = logical(opts.showCoherentConstraintLines);
+opts.showTwoInterceptGuide = logical(opts.showTwoInterceptGuide);
 opts.showPolygonClosureLines = logical(opts.showPolygonClosureLines);
 opts.showFigure = logical(opts.showFigure);
 if opts.showFigure && ~usejava('desktop')
@@ -1032,11 +1036,18 @@ if opts.showCoherentConstraintLines
     xDiag = linspace(0, xIntDiag, 1200);
     yDiag = (bounds.eq8.sum.bits_per_use - coh1*xDiag) ./ max(coh2, eps);
     yDiag = max(yDiag, 0);
-    plot(ax, xDiag, yDiag, '--', 'Color', [0.85 0.33 0.10], 'LineWidth', 1.5, ...
-        'DisplayName', 'Coherent outer bound: R_1+R_2 <= C_{sum}');
+    plot(ax, xDiag, yDiag, '-', 'Color', [0.25 0.25 0.25], 'LineWidth', 1.4, ...
+        'DisplayName', 'Coherent outer bound (physical normalization)');
 else
     xIntDiag = bounds.eq8.sum.bits_per_use / max(coh1, eps);
     yIntDiag = bounds.eq8.sum.bits_per_use / max(coh2, eps);
+end
+
+if opts.showTwoInterceptGuide
+    xGuide = linspace(0, 2, 600);
+    yGuide = max(2 - xGuide, 0);
+    plot(ax, xGuide, yGuide, '--', 'Color', [0.85 0.33 0.10], 'LineWidth', 1.5, ...
+        'DisplayName', 'Normalized 2-intercept guide (y=2-x)');
 end
 
 if hasSecondary
@@ -1068,8 +1079,8 @@ end
 
 ejX = max(ejx);
 ejY = max(ejy);
-xMax = 1.06*max([max(e8x), ejX, p1, xIntDiag, se8xMax, sejxMax, sp1v, sxIntDiag, 1]);
-yMax = 1.06*max([max(e8y), ejY, p2, yIntDiag, se8yMax, sejyMax, sp2v, syIntDiag, 1]);
+xMax = 1.06*max([max(e8x), ejX, p1, xIntDiag, se8xMax, sejxMax, sp1v, sxIntDiag, 2, 1]);
+yMax = 1.06*max([max(e8y), ejY, p2, yIntDiag, se8yMax, sejyMax, sp2v, syIntDiag, 2, 1]);
 xlim(ax,[0 xMax]); ylim(ax,[0 yMax]);
 xlabel(ax, 'R_1 / C_1^{coh} (bits/use normalized)');
 ylabel(ax, 'R_2 / C_2^{coh} (bits/use normalized)');
@@ -1101,6 +1112,7 @@ out.eq8_sum_normalized = bounds.eq8.sum.bits_per_use / max(coh1 + coh2, eps);
 out.show_ea_outer_bound = false;
 out.show_experimental_joint_region = true;
 out.show_coherent_constraint_lines = opts.showCoherentConstraintLines;
+out.show_two_intercept_guide = opts.showTwoInterceptGuide;
 out.show_polygon_closure_lines = opts.showPolygonClosureLines;
 out.show_figure = opts.showFigure;
 out.eq8_coherent_bounds_bits_per_use = struct( ...

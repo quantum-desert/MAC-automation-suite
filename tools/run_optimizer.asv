@@ -1,0 +1,369 @@
+%% Codex optimizer launcher
+% Programmatically configure and run deterministic SNRe optimization.
+% Mirrors the simple editable style of run_visualizer.m.
+
+%% User settings
+% Dataset root that contains run_XXXXX folders.
+data_path = "/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/Advantage_Data/Deterministic/";
+recursive_run_search = true; % true -> recursively search data_path for run_XXXXX folders
+
+% Optimizer mode:
+%   "nontrim" -> full method sweep (optimize_snr_extraction.py)
+%   "trim"    -> trim sweep using fixed best settings from base_results_json
+optimizer_mode = "trim";
+
+% Python optimizer script path.x
+optimizer_py = "/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/codes/MAC-automation-suite/tools/optimize_snr_extraction.py";
+trim_optimizer_py = "/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/codes/MAC-automation-suite/tools/optimize_snr_extraction_trim.py";
+python_bin = "/Library/Frameworks/Python.framework/Versions/3.14/bin/python3";
+
+% python_bin = "python3";
+
+% Output files (written inside data_path by default).
+today=datetime('today');
+report_path_base='/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/snr_optimization_reports/';
+report_path = fullfile(report_path_base, strcat("snr_optimization_report_trim_nobrick_",datestr(today),".md")); 
+json_path   = fullfile(report_path_base, strcat("snr_optimization_report_trim_redownsample_",datestr(today),".json"));
+auto_index_outputs = true; % avoid overwriting prior runs by auto-appending _NNN
+
+% Trim-mode settings (used only when optimizer_mode="trim").
+% base_results_json is the previous non-trim sweep JSON that supplies the
+% fixed best filter chain per channel.
+base_results_json = ""; %fullfile(report_path_base,"snr_optimization_report_trim_28-Apr-2026_001.json"); % use base without trim, if empty will run base opt before trim
+min_downsampled = 1e3;
+redownsample_after_trim = false; % trim raw signal first, then re-downsample before SNRe
+auto_generate_base_for_trim = true; % if true, run non-trim first when base JSON is missing/empty
+auto_base_report_path = ""; % optional override; empty -> auto-derived from trim report path
+auto_base_json_path = "";   % optional override; empty -> auto-derived from trim json path
+
+% Optional: only process specific run indices listed in a text file
+% (comma/space/newline separated). Set "" to disable.
+run_index_file = "";
+
+% Optional: sweep-tracking JSON for classical lookup by run index.
+% Set "" to disable and use processed_summary.json values instead.
+sweep_tracking_json = "";
+
+% Optional fallback classical run index when a run is missing
+% processed_summary.json. Set negative to disable.
+fallback_classical_from_run = -1;
+
+% Core optimizer settings.
+% Keep this false for repository-wide recursive sweeps so M=16,18 are both tested.
+use_dynamic_m = false;       % true -> dynamic neighborhood around round(Fs/Rb)
+rb_s1_hz = 16000;            % S1 bit rate
+rb_s2_hz = 16000;            % S2 bit rate
+phase_multiplier = 2;        % phase sweep = phase_multiplier * M
+lag_range = 3;               % lag sweep = [-lag_range, +lag_range]
+% Clip mode for non-trim sweeps: "all", "none-only", or "winsor-only".
+clip_mode = "none-only";
+disallow_brickwall_filters = true; % true -> exclude FFT brick-wall filters
+
+% Only used when dynamic M is disabled.
+m_values = "15,16,17,18";
+
+% Console output settings.
+verbose = true;
+progress_every = 1;
+show_command = true;
+run_in_terminal = true;      % true -> launch command in macOS Terminal (live progress)
+keep_terminal_open = true;   % true -> wait for Enter before closing launched shell
+
+%% Validation
+if ~isfolder(data_path)
+    error('Dataset path not found: %s', data_path);
+end
+mode = lower(strtrim(char(string(optimizer_mode))));
+if ~ismember(mode, {'nontrim', 'trim'})
+    error('Invalid optimizer_mode: %s (expected nontrim or trim)', optimizer_mode);
+end
+
+if auto_index_outputs
+    [report_path, json_path, idx_main] = unique_output_pair(report_path, json_path);
+    if idx_main > 0
+        fprintf('[run_optimizer] Auto-indexed outputs to avoid overwrite (index=%03d).\n', idx_main);
+    end
+end
+
+run_base_first_for_trim = false;
+resolved_base_results_json = char(string(base_results_json));
+resolved_base_report_path = "";
+
+if strcmp(mode, 'trim')
+    if ~isfile(trim_optimizer_py)
+        error('Trim optimizer script not found: %s', trim_optimizer_py);
+    end
+
+    if strlength(strtrim(auto_base_report_path)) > 0
+        resolved_base_report_path = char(string(auto_base_report_path));
+    else
+        resolved_base_report_path = auto_derive_nontrim_path(char(string(report_path)));
+    end
+
+    if strlength(strtrim(auto_base_json_path)) > 0
+        resolved_auto_base_json = char(string(auto_base_json_path));
+    else
+        resolved_auto_base_json = auto_derive_nontrim_path(char(string(json_path)));
+    end
+
+    has_base_config = strlength(strtrim(string(resolved_base_results_json))) > 0;
+    base_exists = has_base_config && isfile(resolved_base_results_json);
+
+    if ~base_exists
+        if ~auto_generate_base_for_trim
+            if ~has_base_config
+                error('base_results_json must be set when optimizer_mode=trim (or enable auto_generate_base_for_trim)');
+            else
+                error('base_results_json not found: %s', resolved_base_results_json);
+            end
+        end
+        if ~isfile(optimizer_py)
+            error('Auto-generate base requested, but non-trim optimizer script not found: %s', optimizer_py);
+        end
+        run_base_first_for_trim = true;
+        resolved_base_results_json = resolved_auto_base_json;
+    end
+else
+    if ~isfile(optimizer_py)
+        error('Optimizer script not found: %s', optimizer_py);
+    end
+end
+
+%% Build command
+if strlength(strtrim(run_index_file)) > 0 && strcmp(mode, 'trim')
+    error('run_index_file is only supported in nontrim mode.');
+end
+if strlength(strtrim(sweep_tracking_json)) > 0 && ~isfile(sweep_tracking_json)
+    error('sweep_tracking_json not found: %s', sweep_tracking_json);
+end
+clip_mode_norm = lower(strtrim(char(string(clip_mode))));
+if ~ismember(clip_mode_norm, {'all','none-only','winsor-only'})
+    error('Invalid clip_mode: %s (expected all, none-only, or winsor-only)', clip_mode);
+end
+
+if strcmp(mode, 'trim')
+    trim_args = strings(0, 1);
+    trim_args(end+1) = "--root " + shquote(data_path);
+    if recursive_run_search
+        trim_args(end+1) = "--recursive-runs";
+    end
+    trim_args(end+1) = "--base-results-json " + shquote(resolved_base_results_json);
+    trim_args(end+1) = "--report " + shquote(report_path);
+    trim_args(end+1) = "--json " + shquote(json_path);
+    trim_args(end+1) = "--min-downsampled " + string(min_downsampled);
+    if redownsample_after_trim
+        trim_args(end+1) = "--redownsample-after-trim";
+    end
+    if disallow_brickwall_filters
+        trim_args(end+1) = "--disallow-brickwall-filters";
+    end
+
+    if strlength(strtrim(sweep_tracking_json)) > 0
+        trim_args(end+1) = "--sweep-tracking-json " + shquote(sweep_tracking_json);
+    end
+
+    if verbose
+        trim_args(end+1) = "--verbose";
+        trim_args(end+1) = "--progress-every " + string(progress_every);
+    end
+
+    trim_cmd = python_bin + " " + shquote(trim_optimizer_py) + " " + strjoin(trim_args, " ");
+
+    if run_base_first_for_trim
+        base_args = strings(0, 1);
+        base_args(end+1) = "--root " + shquote(data_path);
+        if recursive_run_search
+            base_args(end+1) = "--recursive-runs";
+        end
+        base_args(end+1) = "--report " + shquote(resolved_base_report_path);
+        base_args(end+1) = "--json " + shquote(resolved_base_results_json);
+
+        if strlength(strtrim(run_index_file)) > 0
+            if ~isfile(run_index_file)
+                error('run_index_file not found: %s', run_index_file);
+            end
+            base_args(end+1) = "--run-index-file " + shquote(run_index_file);
+        end
+        if strlength(strtrim(sweep_tracking_json)) > 0
+            base_args(end+1) = "--sweep-tracking-json " + shquote(sweep_tracking_json);
+        end
+        if fallback_classical_from_run >= 0
+            base_args(end+1) = "--fallback-classical-from-run " + string(fallback_classical_from_run);
+        end
+        if use_dynamic_m
+            base_args(end+1) = "--dynamic-m";
+            base_args(end+1) = "--rb-s1 " + string(rb_s1_hz);
+            base_args(end+1) = "--rb-s2 " + string(rb_s2_hz);
+        else
+            base_args(end+1) = "--m-values " + shquote(m_values);
+        end
+        base_args(end+1) = "--clip-mode " + shquote(clip_mode_norm);
+        if disallow_brickwall_filters
+            base_args(end+1) = "--disallow-brickwall-filters";
+        end
+        base_args(end+1) = "--phase-multiplier " + string(phase_multiplier);
+        base_args(end+1) = "--lag-range " + string(lag_range);
+        if verbose
+            base_args(end+1) = "--verbose";
+            base_args(end+1) = "--progress-every " + string(progress_every);
+        end
+
+        base_cmd = python_bin + " " + shquote(optimizer_py) + " " + strjoin(base_args, " ");
+        cmd = base_cmd + " && " + trim_cmd;
+    else
+        cmd = trim_cmd;
+    end
+else
+    args = strings(0, 1);
+    args(end+1) = "--root " + shquote(data_path);
+    if recursive_run_search
+        args(end+1) = "--recursive-runs";
+    end
+    args(end+1) = "--report " + shquote(report_path);
+    args(end+1) = "--json " + shquote(json_path);
+
+    if strlength(strtrim(run_index_file)) > 0
+        if ~isfile(run_index_file)
+            error('run_index_file not found: %s', run_index_file);
+        end
+        args(end+1) = "--run-index-file " + shquote(run_index_file);
+    end
+
+    if strlength(strtrim(sweep_tracking_json)) > 0
+        args(end+1) = "--sweep-tracking-json " + shquote(sweep_tracking_json);
+    end
+    if fallback_classical_from_run >= 0
+        args(end+1) = "--fallback-classical-from-run " + string(fallback_classical_from_run);
+    end
+
+    if use_dynamic_m
+        args(end+1) = "--dynamic-m";
+        args(end+1) = "--rb-s1 " + string(rb_s1_hz);
+        args(end+1) = "--rb-s2 " + string(rb_s2_hz);
+    else
+        args(end+1) = "--m-values " + shquote(m_values);
+    end
+    args(end+1) = "--clip-mode " + shquote(clip_mode_norm);
+    if disallow_brickwall_filters
+        args(end+1) = "--disallow-brickwall-filters";
+    end
+    args(end+1) = "--phase-multiplier " + string(phase_multiplier);
+    args(end+1) = "--lag-range " + string(lag_range);
+    if verbose
+        args(end+1) = "--verbose";
+        args(end+1) = "--progress-every " + string(progress_every);
+    end
+
+    cmd = python_bin + " " + shquote(optimizer_py) + " " + strjoin(args, " ");
+end
+
+if show_command
+    fprintf('\n[run_optimizer] Command:\n%s\n\n', cmd);
+    if strcmp(mode, 'trim')
+        fprintf('[run_optimizer] Trim base JSON: %s\n', resolved_base_results_json);
+        if run_base_first_for_trim
+            fprintf('[run_optimizer] Auto-base generation enabled. Base report/json:\n');
+            fprintf('  %s\n', resolved_base_report_path);
+            fprintf('  %s\n\n', resolved_base_results_json);
+        end
+    end
+end
+
+%% Execute
+if run_in_terminal
+    if strcmp(mode, 'trim') && run_base_first_for_trim
+        launch_dir = fileparts(optimizer_py);
+    elseif strcmp(mode, 'trim')
+        launch_dir = fileparts(trim_optimizer_py);
+    else
+        launch_dir = fileparts(optimizer_py);
+    end
+    term_cmd = "cd " + shquote(launch_dir) + "; " + cmd;
+    if keep_terminal_open
+        term_cmd = term_cmd + "; ec=$?; echo; echo '[run_optimizer] Exit code:' $ec; " + ...
+            "echo 'Press Enter to close...'; read -r _";
+    end
+
+    osa_line_1 = 'tell application "Terminal" to activate';
+    osa_line_2 = ['tell application "Terminal" to do script ' applescriptQuote(char(term_cmd))];
+    osa_cmd = "osascript -e " + shquote(osa_line_1) + " -e " + shquote(osa_line_2);
+
+    [status, out] = system(char(osa_cmd));
+    fprintf('%s\n', out);
+    if status ~= 0
+        error('Failed to launch Terminal runner (exit code %d)', status);
+    end
+
+    fprintf('[run_optimizer] Launched in Terminal.\n');
+    fprintf('  Report target: %s\n', report_path);
+    fprintf('  JSON target:   %s\n', json_path);
+else
+    [status, out] = system(char(cmd));
+    fprintf('%s\n', out);
+    if status ~= 0
+        error('Optimizer failed with exit code %d', status);
+    end
+
+    fprintf('[run_optimizer] Complete.\n');
+    fprintf('  Report: %s\n', report_path);
+    fprintf('  JSON:   %s\n', json_path);
+end
+
+
+function q = shquote(s)
+% Shell-quote for POSIX sh/zsh: wrap in single quotes and escape inner '.
+cs = char(string(s));
+cs = strrep(cs, '''', '''"''"''');  % ' -> '"'"'
+q = ['''' cs ''''];
+end
+
+function q = applescriptQuote(s)
+% AppleScript string literal with escaped backslash and double quote.
+cs = char(string(s));
+cs = strrep(cs, '\', '\\');
+cs = strrep(cs, '"', '\"');
+q = ['"' cs '"'];
+end
+
+function out = auto_derive_nontrim_path(trim_path)
+tp = char(string(trim_path));
+out = strrep(tp, "_trim_", "_");
+if strcmp(out, tp)
+    [d, n, e] = fileparts(tp);
+    out = fullfile(d, [n "_base" e]);
+end
+end
+
+function [report_out, json_out, used_index] = unique_output_pair(report_in, json_in)
+report_out = char(string(report_in));
+json_out = char(string(json_in));
+used_index = 0;
+
+[rd, rn, re] = fileparts(report_out);
+[jd, jn, je] = fileparts(json_out);
+
+if ~isfolder(rd)
+    mkdir(rd);
+end
+if ~isfolder(jd)
+    mkdir(jd);
+end
+
+if ~(isfile(report_out) || isfile(json_out))
+    return;
+end
+
+for k = 1:9999
+    suf = sprintf('_%03d', k);
+    rpt_c = fullfile(rd, [rn suf re]);
+    jsn_c = fullfile(jd, [jn suf je]);
+    if ~(isfile(rpt_c) || isfile(jsn_c))
+        report_out = rpt_c;
+        json_out = jsn_c;
+        used_index = k;
+        return;
+    end
+end
+
+error('Unable to allocate unique output filenames after 9999 attempts.');
+end

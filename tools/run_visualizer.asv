@@ -13,16 +13,13 @@ mod = 'd'; % 'd' = deterministic, 'p' = PN15
 override_report_base = "/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/snr_optimization_reports";
 override_adv_data_base = "/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/MAC/data/codex_processing/Advantage_Data/Deterministic/";
 data_path_override = fullfile(override_adv_data_base,"positive_margin_4-20/batch_4/");
-% data_path_override = fullfile(override_adv_data_base,"positive_margin_4-22_batch2/batch_2/");
-
-
 json_path_override = fullfile(override_report_base,"snr_optimization_report_trim_28-Apr-2026_002.json");
 
 % JSON selection mode:
 %   "auto"    -> prefer trim JSON if present, else fall back to non-trim
 %   "trim"    -> require trim JSON
 %   "nontrim" -> require non-trim JSON
-json_mode = "nontrim";
+json_mode = "trim";
 
 % Plot style overrides (RGB in [0,1]) fed directly into visualize_best_dataset_tool.
 % Edit these values as needed; no interactive color picker is used.
@@ -37,20 +34,10 @@ style_overrides.downsampled   = hex2rgb('#243FA3'); % photon indigo        (600)
 % hist
 style_overrides.histXp        = hex2rgb('#003540'); % abyss teal
 style_overrides.histXm        = hex2rgb('#007A82'); % emission teal
-style_overrides.classicalHistXp = hex2rgb('#9a6a2a');
-style_overrides.classicalHistXm = hex2rgb('#d2b07a');
 style_overrides.fftModulation = [0.0 0.4470 0.7410];
 style_overrides.fftProcessed  = [0.8500 0.3250 0.0980];
 style_overrides.scanMetric    = [0.0 0.4470 0.7410];
 style_overrides.scanBestPhase = [0.85 0.1 0.1];
-
-% Histogram voltage normalization options (to compare channels on same
-% effective voltage scale by removing TIA electrical gain).
-vis_options = struct();
-vis_options.normalizeHistByTIAGain = true;
-vis_options.tiaGainByChannel = struct('S1', 1.0, 'S2', 2.0); % relative to S1 gain
-% Example:
-% vis_options.tiaGainByChannel = struct('S1', 8.5, 'S2', 6.0);
 
 %% Build dataset path
 if strlength(strtrim(string(data_path_override))) > 0
@@ -84,10 +71,10 @@ addpath('/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/
 
 if strlength(string(json_path)) > 0
     fprintf('Using results JSON (%s): %s\n', json_mode, json_path);
-    visualize_best_dataset_tool(char(data_path), char(json_path), style_overrides, vis_options);
+    visualize_best_dataset_tool(char(data_path), char(json_path), style_overrides);
 else
     fprintf('No optimization JSON found. Falling back to tool auto-discovery for: %s\n', data_path);
-    visualize_best_dataset_tool(char(data_path), '', style_overrides, vis_options);
+    visualize_best_dataset_tool(char(data_path), '', style_overrides);
 end
 
 
@@ -270,8 +257,6 @@ styles.modulation = [0.9290 0.6940 0.1250];
 styles.downsampled = [1.0 0.0 1.0];
 styles.histXp = [0.62 0.01 0.84];
 styles.histXm = [1.0 0.69 0.31];
-styles.classicalHistXp = [0.20 0.20 0.20];
-styles.classicalHistXm = [0.55 0.55 0.55];
 styles.fftModulation = [0.0 0.4470 0.7410];
 styles.fftProcessed = [0.8500 0.3250 0.0980];
 styles.scanMetric = [0.0 0.4470 0.7410];
