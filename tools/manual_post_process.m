@@ -215,9 +215,11 @@ else
     best_window = override.detrend.window;
 end
 % apply best window configuration
+cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
 cfg.s1.pipeline.detrend.window = best_window;
 
 % run processing w/ best phase
+
 out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
 
 % report
@@ -226,7 +228,7 @@ fprintf('\nBest Window = %.f', ...
 fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
     out.s1.snre,out.s1.adv_db);
 
-return
+
 
 %% manual phase sweep
 
@@ -246,32 +248,30 @@ for p =1:numel(phase_options)
     % store SNRe
     SNRr(p) = out.s1.snre;
 
-    % store pipeline
-    out.s1.pipeline = cfg.s1.pipeline;
-
-    % plot time slice
-    % plot_time_slice_with_downsample(ax, out.s1, 'NumSamples',500)
-
-
 end
+
+% extract max
+[~,idx] = max(SNRr); best_phase = phase_options(idx);
+
 
 % visualize SNRe trend
 figure;
 hold on; theme light;
-plot(phase_options,SNRr);
-yline(out.s1.snr_c,'--','DisplayName','SNRc');
-xlabel('phase');
-ylabel('SNRe');
+plot(phase_options,SNRr,LineWidth=2);
+yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+xlabel('phase'); ylabel('SNRe');
+title('Intrabit Phase Sweep Optimization');
 
-if(~independent)
-    % select + apply best phase
-    [~,idx] = max(SNRr); best_phase = phase_options(idx);
-    cfg.s1.pipeline.phase = best_phase;
 
-    % run processing w/ best phase
-    verbose=true;
-    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
-end
+% apply best phase
+cfg.s1.pipeline.phase = best_phase;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+% report
+fprintf('\nBest Phase = %.f', ...
+    best_phase);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s1.snre,out.s1.adv_db);
 
 
 %% Simple summary
