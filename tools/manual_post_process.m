@@ -14,13 +14,29 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.skip = true;
-override.causal_filt.bestLP = 0.57486850;
-override.causal_filt.bestHP = 0.62372881;
+override.causal_filt.s1.skip = true;
+override.causal_filt.s1.bestLP = 0.57486850;
+override.causal_filt.s1.bestHP = 0.62372881;
+
+override.causal_filt.s2.skip = true;
+override.causal_filt.s2.bestLP = 0.52355348;
+override.causal_filt.s2.bestHP = 0.46271186;
 
 % detrend
 override.detrend.skip = true;
 override.detrend.window = 3;
+
+% phase
+override.phase.skip = true;
+override.phase.best_phase = 8;
+
+% lag
+override.lag.skip = false;
+override.lag.best_lag = 0;
+
+% trim
+override.trim.skip = false;
+override.trim.best_trim_idx = 1;
 
 
 %% Explicit dataset roots (best S1/S2 from Advantage_Data/Deterministic)
@@ -46,8 +62,8 @@ cfg.s2.pipeline = default_pipeline();
 
 % Example: start from prior best-known settings.
 cfg.s1.pipeline.M = 18;
-cfg.s1.pipeline.lag = -1;
-cfg.s1.pipeline.trim.mode = 'trim_start'; % 'none' | 'trim_start' | 'trim_end'
+cfg.s1.pipeline.lag = 0; % -1
+cfg.s1.pipeline.trim.mode = 'none'; % 'none' | 'trim_start' | 'trim_end'
 cfg.s1.pipeline.trim.points = 2256;       % in downsampled points
 cfg.s1.pipeline.phase = 7;
 cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
@@ -69,10 +85,9 @@ out.cfg = cfg; % return cfg for debugging
 
 % first, focus on S1, then apply everything to S2 later
 
-%%  manual filter sweep - LP + HP chain
+%%  manual filter sweep - LP + HP chain: S1
 %
-%
-if(~override.causal_filt.skip)
+if(~override.causal_filt.s1.skip)
     % set flags
     verbose=false;
 
@@ -105,8 +120,8 @@ if(~override.causal_filt.skip)
     sweeprFine = filter_grid_search(lp2,hp2,out.s1,'s1',cfg,plot_opts);
 
 else
-    sweeprFine.bestLP = override.causal_filt.bestLP;
-    sweeprFine.bestHP = override.causal_filt.bestHP;
+    sweeprFine.bestLP = override.causal_filt.s1.bestLP;
+    sweeprFine.bestHP = override.causal_filt.s1.bestHP;
 
 end
 % apply best filters
@@ -116,7 +131,7 @@ cfg.s1.pipeline.filter.ratio_hp = sweeprFine.bestHP
 out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
 
 % report
-fprintf('\nFine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
+fprintf('\n(S1) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
     sweeprFine.bestLP, sweeprFine.bestHP);
 fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
     out.s1.snre,out.s1.adv_db);
@@ -127,7 +142,65 @@ plot_fft_from_outsx(ax,out.s1,strcat("fc_lp=",num2str(round(sweeprFine.bestLP,3)
 xlim([0 40]); ylim([-80 1]);
 title('fft: optimized causal bandpass filter')
 
+%%  manual filter sweep - LP + HP chain: S2
+%
+if(~override.causal_filt.s2.skip)
+    % set flags
+    verbose=false;
 
+    % S1
+    %  coarse grid search
+    num_fopt = 30;
+    lp1 = linspace(0.1,2,num_fopt);
+    hp1 = linspace(0.2,0.7,num_fopt);
+
+    plot_opts = struct();
+    plot_opts.visualize = true;
+    plot_opts.title= 'Coarse Search';
+    sweeprCoarse = filter_grid_search(lp1,hp1,out.s2,'s2',cfg,plot_opts);
+
+    % fine grid sweep
+    % locate ridge window from top percentile
+    prc = 10;
+    thr = prctile(sweeprCoarse.SNRr(:), 100-prc);      % top prc%
+    [r,c] = find(sweeprCoarse.SNRr >= thr);
+
+    lp_lo = max(min(lp1(r)) - prc/1e2, min(lp1));
+    lp_hi = min(max(lp1(r)) + prc/1e2, max(lp1));
+    hp_lo = max(min(hp1(c)) - prc/1e2, min(hp1));
+    hp_hi = min(max(hp1(c)) + prc/1e2, max(hp1));
+
+    % --- pass 2: fine near transition ---
+    plot_opts.title= 'Fine Search';
+    lp2 = linspace(lp_lo, lp_hi, 2*num_fopt);
+    hp2 = linspace(hp_lo, hp_hi, 2*num_fopt);
+    sweeprFine = filter_grid_search(lp2,hp2,out.s2,'s2',cfg,plot_opts);
+
+else
+    sweeprFine.bestLP = override.causal_filt.s2.bestLP;
+    sweeprFine.bestHP = override.causal_filt.s2.bestHP;
+
+end
+% apply best filters
+cfg.s2.pipeline.filter.mode = 'ratio_hp_lp_causal';
+cfg.s2.pipeline.filter.ratio = sweeprFine.bestLP;
+cfg.s2.pipeline.filter.ratio_hp = sweeprFine.bestHP;
+out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',verbose);
+
+% report
+fprintf('\n(S2) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
+    sweeprFine.bestLP, sweeprFine.bestHP);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s2.snre,out.s2.adv_db);
+
+% plot fft
+figure;ax=gca; grid off; theme light;
+plot_fft_from_outsx(ax,out.s2,strcat("fc_lp=",num2str(round(sweeprFine.bestLP,3)),";fc_hp=",num2str(round(sweeprFine.bestHP,3))));
+xlim([0 40]); ylim([-80 1]);
+title('fft: optimized causal bandpass filter')
+
+
+return
 %% manual filter sweep - non causal
 %
 % set flags
@@ -232,36 +305,40 @@ fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
 
 %% manual phase sweep
 
-% options
-phase_options = [1:cfg.s1.pipeline.M];
-SNRr = zeros(size(phase_options));
-verbose=false;
+if(~override.phase.skip)
+    % options
+    phase_options = [1:cfg.s1.pipeline.M];
+    SNRr = zeros(size(phase_options));
+    verbose=false;
 
-for p =1:numel(phase_options)
+    for p =1:numel(phase_options)
 
-    phase = phase_options(p);
-    cfg.s1.pipeline.phase = phase;
+        phase = phase_options(p);
+        cfg.s1.pipeline.phase = phase;
 
-    % run processing
-    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+        % run processing
+        out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
 
-    % store SNRe
-    SNRr(p) = out.s1.snre;
+        % store SNRe
+        SNRr(p) = out.s1.snre;
 
+    end
+
+    % extract max
+    [~,idx] = max(SNRr); best_phase = phase_options(idx);
+
+
+    % visualize SNRe trend
+    figure;
+    hold on; theme light;
+    plot(phase_options,SNRr,LineWidth=2);
+    yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+    xlabel('phase'); ylabel('SNRe');
+    title('Intrabit Phase Sweep Optimization');
+
+else
+    best_phase = override.phase.best_phase;
 end
-
-% extract max
-[~,idx] = max(SNRr); best_phase = phase_options(idx);
-
-
-% visualize SNRe trend
-figure;
-hold on; theme light;
-plot(phase_options,SNRr,LineWidth=2);
-yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
-xlabel('phase'); ylabel('SNRe');
-title('Intrabit Phase Sweep Optimization');
-
 
 % apply best phase
 cfg.s1.pipeline.phase = best_phase;
@@ -272,6 +349,101 @@ fprintf('\nBest Phase = %.f', ...
     best_phase);
 fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
     out.s1.snre,out.s1.adv_db);
+
+
+%% manual lag sweep
+
+if(~override.lag.skip)
+% options
+lag_options = [-10:10];
+SNRr = zeros(size(lag_options));
+verbose=false;
+
+for l =1:numel(lag_options)
+
+    % select lag target
+    cfg.s1.pipeline.lag = lag_options(l);
+
+    % run processing
+    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+    % store SNRe
+    SNRr(l) = out.s1.snre;
+
+end
+
+% extract max
+[~,idx] = max(SNRr); best_lag = lag_options(idx);
+
+
+% visualize SNRe trend
+figure;
+hold on; theme light;
+plot(lag_options,SNRr,LineWidth=2);
+yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+xlabel('lag'); ylabel('SNRe');
+title('Lag Sweep Optimization');
+else
+    best_lag = override.lag.best_lag;
+end
+
+% apply best phase
+cfg.s1.pipeline.lag = best_lag;
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+
+% report
+fprintf('\nBest Lag = %.f', ...
+    best_lag);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s1.snre,out.s1.adv_db);
+
+%% manual trim sweep
+% TODO
+% if(~override.trim.skip)
+% options
+% lag_options = [-10:10];
+% SNRr = zeros(size(lag_options));
+% verbose=false;
+% 
+% sweep trim window
+% for l =1:numel(lag_options)
+% 
+%     select lag target
+%     cfg.s1.pipeline.lag = lag_options(l);
+% 
+%     run processing
+%     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% 
+%     store SNRe
+%     SNRr(l) = out.s1.snre;
+% 
+% end
+% 
+% extract max
+% [~,idx] = max(SNRr); best_lag = lag_options(idx);
+% 
+% 
+% visualize SNRe trend
+% figure;
+% hold on; theme light;
+% plot(lag_options,SNRr,LineWidth=2);
+% yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+% xlabel('lag'); ylabel('SNRe');
+% title('Lag Sweep Optimization');
+% else
+%     best_lag = override.lag.best_lag;
+% end
+% 
+% apply best phase
+% cfg.s1.pipeline.lag = best_lag;
+% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% 
+% report
+% fprintf('\nBest Lag = %.f', ...
+%     best_lag);
+% fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+%     out.s1.snre,out.s1.adv_db);
+% 
 
 
 %% Simple summary
@@ -340,16 +512,16 @@ x_d = apply_detrend_stage(x_f, ch_cfg.pipeline.M, ch_cfg.pipeline.detrend);
 x_c = x_d;
 
 % Stage 4: lag alignment
-% [x_l, m_l] = apply_lag_stage(x_c, x_m, ch_cfg.pipeline.lag);
-% skip lag
-x_l = x_c;
-m_l = x_m;
+[x_l, m_l] = apply_lag_stage(x_c, x_m, ch_cfg.pipeline.lag);
+% % skip lag
+% x_l = x_c;
+% m_l = x_m;
 
 % Stage 5: trimming
-% [x_t, m_t] = apply_trim_stage(x_l, m_l, ch_cfg.pipeline.M, ch_cfg.pipeline.trim);
-%skip trim
-x_t = x_l;
-m_t = m_l;
+[x_t, m_t] = apply_trim_stage(x_l, m_l, ch_cfg.pipeline.M, ch_cfg.pipeline.trim);
+% %skip trim
+% x_t = x_l;
+% m_t = m_l;
 
 
 % Stage 6: phase-select and downsample
@@ -375,6 +547,8 @@ result.paths.mod = mod_path;
 result.debug.raw = x_h;
 result.debug.filtered = x_f;
 result.debug.after_trim = x_t;
+
+% Stage 9 (TODO): Estimate MI (soft decoding)
 
 % Optional: retrieve classical SNR (SNRc) from processed_summary.json.
 [result.snr_c, result.snr_c_source] = load_snr_c_from_processed_summary(run_dir, channel_name);
