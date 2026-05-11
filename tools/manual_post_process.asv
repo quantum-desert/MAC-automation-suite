@@ -26,7 +26,7 @@ override.causal_filt.s2.bestHP = 0.46271186;
 override.detrend.s1.skip = true;
 override.detrend.s1.window = 3;
 
-override.detrend.s2.skip = true;
+override.detrend.s2.skip = false;
 override.detrend.s2.window = 3;
 
 % phase
@@ -102,12 +102,115 @@ cfg.verbose=true;
 
 
 
-%% manual detrend window sweep
-[out,cfg] = detrend(out,cfg,override,'s1');
-[out,cfg] = detrend(out,cfg,override,'s2');
-return
+%% manual detrend window sweep: S1
 
-   
+    function detrend(out,cfg,override,select)
+        if(strcmp(select,'s1'))
+            if(~override.detrend.s1.skip)
+    % options
+    window_options = [1:10*cfg.s1.pipeline.M];
+    SNRr = zeros(size(window_options));
+
+    % mode for intra-bit window sizes
+    cfg.s1.pipeline.detrend.s1.mode = "custom_movmean_subtract";
+
+    % figure creation
+    % figure; hold on; ax=gca;
+
+    for w =1:numel(window_options)
+
+        cfg.s1.pipeline.detrend.s1.window = window_options(w);
+
+        % run processing
+        out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+
+        % store SNRe
+        SNRr(w) = out.s1.snre;
+
+    end
+    % extract max
+    [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
+
+    % visualize SNRe trend
+    figure;
+    hold on; theme light;
+    plot(window_options,SNRr,LineWidth=2);
+    yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+    xlabel('window size');
+    ylabel('SNRe');
+    title(strcat('Detrend Window Optimization; Best Window=',num2str(best_window)));
+
+else
+    best_window = override.detrend.s1.window;
+end
+% apply best window configuration
+cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
+cfg.s1.pipeline.detrend.window = best_window;
+
+% run processing w/ best phase
+
+out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+
+% report
+fprintf('\nBest Window = %.f', ...
+    best_window);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s1.snre,out.s1.adv_db);
+        elseif(strcmp(select,'s2'))
+            if(~override.detrend.s2.skip)
+    % options
+    window_options = [1:10*cfg.s2.pipeline.M];
+    SNRr = zeros(size(window_options));
+
+    % mode for intra-bit window sizes
+    cfg.s2.pipeline.detrend.mode = "custom_movmean_subtract";
+
+    % figure creation
+    % figure; hold on; ax=gca;
+
+    for w =1:numel(window_options)
+
+        cfg.s2.pipeline.detrend.window = window_options(w);
+
+        % run processing
+        out.s2 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s2, 'S2',cfg.verbose);
+
+        % store SNRe
+        SNRr(w) = out.s2.snre;
+
+    end
+    % extract max
+    [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
+
+    % visualize SNRe trend
+    figure;
+    hold on; theme light;
+    plot(window_options,SNRr,LineWidth=2);
+    yline(out.s2.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+    xlabel('window size');
+    ylabel('SNRe');
+    title(strcat('Detrend Window Optimization; Best Window=',num2str(best_window)));
+
+else
+    best_window = override.detrend.s2.window;
+end
+% apply best window configuration
+cfg.s2.pipeline.detrend.s2.mode = "custom_movmean_subtract";
+cfg.s2.pipeline.detrend.s2.window = best_window;
+
+% run processing w/ best phase
+
+out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',verbose);
+
+% report
+fprintf('\nBest Window = %.f', ...
+    best_window);
+fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+    out.s2.snre,out.s2.adv_db);
+        else
+            disp('error');
+        end
+    end
 
 
 
@@ -207,7 +310,50 @@ fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
 
 %% manual trim sweep
 % TODO
-
+% if(~override.trim.skip)
+% options
+% lag_options = [-10:10];
+% SNRr = zeros(size(lag_options));
+% 
+% sweep trim window
+% for l =1:numel(lag_options)
+% 
+%     select lag target
+%     cfg.s1.pipeline.lag = lag_options(l);
+% 
+%     run processing
+%     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% 
+%     store SNRe
+%     SNRr(l) = out.s1.snre;
+% 
+% end
+% 
+% extract max
+% [~,idx] = max(SNRr); best_lag = lag_options(idx);
+% 
+% 
+% visualize SNRe trend
+% figure;
+% hold on; theme light;
+% plot(lag_options,SNRr,LineWidth=2);
+% yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
+% xlabel('lag'); ylabel('SNRe');
+% title('Lag Sweep Optimization');
+% else
+%     best_lag = override.lag.best_lag;
+% end
+% 
+% apply best phase
+% cfg.s1.pipeline.lag = best_lag;
+% out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',verbose);
+% 
+% report
+% fprintf('\nBest Lag = %.f', ...
+%     best_lag);
+% fprintf('\nSNRe = %.3f, Adv. (dB) = %.2f\n', ...
+%     out.s1.snre,out.s1.adv_db);
+% 
 
 
 %% Simple summary
@@ -936,112 +1082,4 @@ else
     return;
 end
 
-end
-
-function [out,cfg] = detrend(out,cfg,override,select)
-if(strcmp(select,'s1'))
-    if(~override.detrend.s1.skip)
-        % options
-        window_options = [1:10*cfg.s1.pipeline.M];
-        SNRr = zeros(size(window_options));
-
-        % mode for intra-bit window sizes
-        cfg.s1.pipeline.detrend.s1.mode = "custom_movmean_subtract";
-
-        % figure creation
-        % figure; hold on; ax=gca;
-
-        for w =1:numel(window_options)
-
-            cfg.s1.pipeline.detrend.s1.window = window_options(w);
-
-            % run processing
-            out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
-
-            % store SNRe
-            SNRr(w) = out.s1.snre;
-
-        end
-        % extract max
-        [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
-
-        % visualize SNRe trend
-        figure;
-        hold on; theme light;
-        plot(window_options,SNRr,LineWidth=2);
-        yline(out.s1.snr_c,'--','DisplayName','SNRc',LineWidth=2);
-        xlabel('window size');
-        ylabel('SNRe');
-        title(strcat(select," Detrend Window Optimization; Best Window=",num2str(best_window)));
-
-    else
-        best_window = override.detrend.s1.window;
-    end
-    % apply best window configuration
-    cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
-    cfg.s1.pipeline.detrend.window = best_window;
-
-    % run processing w/ best phase
-
-    out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
-
-    % report
-    fprintf('\nS1 Best Window = %.f', ...
-        best_window);
-    fprintf('\nS1 SNRe = %.3f, Adv. (dB) = %.2f\n', ...
-        out.s1.snre,out.s1.adv_db);
-elseif(strcmp(select,'s2'))
-    if(~override.detrend.s2.skip)
-        % options
-        window_options = [1:10*cfg.s2.pipeline.M];
-        SNRr = zeros(size(window_options));
-
-        % mode for intra-bit window sizes
-        cfg.s2.pipeline.detrend.mode = "custom_movmean_subtract";
-
-        % figure creation
-        % figure; hold on; ax=gca;
-
-        for w =1:numel(window_options)
-
-            cfg.s2.pipeline.detrend.window = window_options(w);
-
-            % run processing
-            out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-
-            % store SNRe
-            SNRr(w) = out.s2.snre;
-
-        end
-        % extract max
-        [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
-
-        % visualize SNRe trend
-        figure;
-        hold on; theme light;
-        plot(window_options,SNRr,LineWidth=2);
-        yline(out.s2.snr_c,'--','DisplayName','SNRc',LineWidth=2);
-        xlabel('window size');
-        ylabel('SNRe');
-        title(strcat(select," Detrend Window Optimization; Best Window=",num2str(best_window)));
-
-    else
-        best_window = override.detrend.s2.window;
-    end
-    % apply best window configuration
-    cfg.s2.pipeline.detrend.mode = "custom_movmean_subtract";
-    cfg.s2.pipeline.detrend.window = best_window;
-
-    % run processing w/ best phase
-
-    out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-
-    % report
-    fprintf('\nS2 Best Window = %.f', ...
-        best_window);
-    fprintf('\nS2 SNRe = %.3f, Adv. (dB) = %.2f\n', ...
-        out.s2.snre,out.s2.adv_db);
-else
-    disp('error');
-end
 end
