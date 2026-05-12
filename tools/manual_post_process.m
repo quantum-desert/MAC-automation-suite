@@ -98,7 +98,7 @@ out.tracker.s2.baseline = out.s2.adv_db;
 %%  manual filter sweep - LP + HP chain
 disp(" ");
 disp("----- Filter Sweep -----");
-cfg.verbose = false;
+cfg.verbose = true;
 
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
@@ -735,8 +735,11 @@ function sweepr = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
 % appropriate config struct and run post process w/ updated vals
 cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal';
 
+t_run = 300; % approx time in ms
+t_total = t_run*length(lp)*length(hp)/1e3; % seconds
 % coarse grid
 SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
+run_num = 1;
 for r_lp = 1:numel(lp)
     % set LP cutoff
     cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
@@ -747,7 +750,7 @@ for r_lp = 1:numel(lp)
 
         % status update
         if(cfg.verbose)
-            disp(strcat("Sweeping grid index (",num2str(r_lp),",",num2str(r_hp),")"));
+            % disp(strcat("Sweeping grid index (",num2str(r_lp),",",num2str(r_hp),")"));
         end
 
         % run processing
@@ -755,6 +758,10 @@ for r_lp = 1:numel(lp)
 
         % store SNRe
         SNRr(r_lp,r_hp) = sx.snre;
+
+        % timing
+        run_num = run_num + 1;
+        disp(strcat("Reminaing time ~:",num2str(round(t_total-t_run*run_num/1e3,3))," s"));
     end
 
 end
