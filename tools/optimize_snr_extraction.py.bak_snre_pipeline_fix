@@ -59,16 +59,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--m-values", default="16,18", help="Comma-separated M values to evaluate")
     p.add_argument(
         "--dynamic-m",
-        dest="dynamic_m",
         action="store_true",
-        default=True,
-        help="Use per-channel M computed from Fs and bit rate (M=round(Fs/Rb)); enabled by default",
-    )
-    p.add_argument(
-        "--fixed-m",
-        dest="dynamic_m",
-        action="store_false",
-        help="Use only the explicit --m-values candidates instead of deriving M from Fs/Rb.",
+        help="Use per-channel M computed from Fs and bit rate (M=round(Fs/Rb)) instead of fixed --m-values",
     )
     p.add_argument("--rb-s1", type=float, default=16000.0, help="Bit rate (Hz) for S1 when --dynamic-m is enabled")
     p.add_argument("--rb-s2", type=float, default=16000.0, help="Bit rate (Hz) for S2 when --dynamic-m is enabled")
@@ -81,8 +73,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--phase-multiplier",
         type=int,
-        default=4,
-        help="Evaluate start phase over phase_multiplier*M candidates; MATLAB postprocess uses 4",
+        default=1,
+        help="Evaluate start phase over phase_multiplier*M candidates",
     )
     p.add_argument(
         "--lag-range",
@@ -106,12 +98,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--disallow-brickwall-filters",
         action="store_true",
-        help="Exclude FFT brick-wall filters from the legacy method sweep.",
-    )
-    p.add_argument(
-        "--postprocess-only",
-        action="store_true",
-        help="Evaluate only the MATLAB postprocess-compatible extraction candidate; default also runs the exploratory grid.",
+        help="Exclude FFT brick-wall filters from the method sweep.",
     )
     return p.parse_args()
 
@@ -192,110 +179,6 @@ def moving_average(x: np.ndarray, window: int):
         return x.copy()
     kernel = np.ones(window, dtype=np.float64) / float(window)
     return np.convolve(x, kernel, mode="same")
-
-
-def butter_lowpass_coefficients(order: int, wn: float):
-    """Dependency-free Butterworth coefficients compatible with MATLAB/scipy."""
-    if not (0.0 < wn < 1.0):
-        raise ValueError(f"Butterworth normalized cutoff must be in (0, 1), got {wn}")
-    order = int(order)
-    fs = 2.0
-    fs2 = 2.0 * fs
-    warped = 2.0 * fs * math.tan(math.pi * float(wn) / fs)
-    m = np.arange(-order + 1, order, 2)
-    poles = -np.exp(1j * math.pi * m / (2.0 * order))
-    poles = warped * poles
-    z_digital = np.full(order, -1.0)
-    p_digital = (fs2 + poles) / (fs2 - poles)
-    gain = (warped ** order) * float(np.real(1.0 / np.prod(fs2 - poles)))
-    b = np.real(gain * np.poly(z_digital))
-    a = np.real(np.poly(p_digital))
-    b = b / a[0]
-    a = a / a[0]
-    b = b * (np.sum(a) / np.sum(b))
-    return b.astype(np.float64), a.astype(np.float64)
-
-
-def _companion_matrix(a: np.ndarray):
-    n = len(a) - 1
-    c = np.zeros((n, n), dtype=np.float64)
-    c[0, :] = -a[1:] / a[0]
-    if n > 1:
-        c[1:, :-1] = np.eye(n - 1)
-    return c
-
-
-def lfilter_zi(b: np.ndarray, a: np.ndarray):
-    b = np.asarray(b, dtype=np.float64)
-    a = np.asarray(a, dtype=np.float64)
-    if a[0] != 1.0:
-        b = b / a[0]
-        a = a / a[0]
-    n = max(len(a), len(b))
-    if len(a) < n:
-        a = np.r_[a, np.zeros(n - len(a), dtype=np.float64)]
-    if len(b) < n:
-        b = np.r_[b, np.zeros(n - len(b), dtype=np.float64)]
-    A = _companion_matrix(a).T
-    B = b[1:] - a[1:] * b[0]
-    return np.linalg.solve(np.eye(n - 1) - A, B)
-
-
-def lfilter_direct_form_ii(b: np.ndarray, a: np.ndarray, x: np.ndarray, zi=None):
-    b = np.asarray(b, dtype=np.float64)
-    a = np.asarray(a, dtype=np.float64)
-    x = np.asarray(x, dtype=np.float64)
-    if a[0] != 1.0:
-        b = b / a[0]
-        a = a / a[0]
-    n = max(len(a), len(b))
-    if len(a) < n:
-        a = np.r_[a, np.zeros(n - len(a), dtype=np.float64)]
-    if len(b) < n:
-        b = np.r_[b, np.zeros(n - len(b), dtype=np.float64)]
-    z = np.zeros(n - 1, dtype=np.float64) if zi is None else np.array(zi, dtype=np.float64).copy()
-    y = np.empty_like(x, dtype=np.float64)
-    for i, xi in enumerate(x):
-        yi = b[0] * xi + z[0]
-        y[i] = yi
-        for j in range(n - 2):
-            z[j] = z[j + 1] + b[j + 1] * xi - a[j + 1] * yi
-        z[n - 2] = b[n - 1] * xi - a[n - 1] * yi
-    return y, z
-
-
-def filtfilt_oddpad(b: np.ndarray, a: np.ndarray, x: np.ndarray):
-    x = np.asarray(x, dtype=np.float64)
-    ntaps = max(len(a), len(b))
-    edge = 3 * ntaps
-    if x.size <= edge:
-        raise ValueError("Input vector is too short for filtfilt padding")
-    ext = np.r_[2.0 * x[0] - x[edge:0:-1], x, 2.0 * x[-1] - x[-2:-edge - 2:-1]]
-    zi = lfilter_zi(b, a)
-    y, _ = lfilter_direct_form_ii(b, a, ext, zi=zi * ext[0])
-    yr = y[::-1]
-    y2, _ = lfilter_direct_form_ii(b, a, yr, zi=zi * yr[0])
-    return y2[::-1][edge:-edge]
-
-
-def matlab_deterministic_signal(homo: np.ndarray, fs: float, rb: float, M: int):
-    centered = homo - float(np.mean(homo))
-    detrended = centered - moving_average(centered, max(3, int(2 * M)))
-    wn = 0.6 * float(rb) / (float(fs) / 2.0)
-    b, a = butter_lowpass_coefficients(5, wn)
-    return filtfilt_oddpad(b, a, detrended)
-
-
-def digitize_modulation_like_matlab(mod: np.ndarray):
-    mod_norm = mod / float(np.max(mod))
-    return mod_norm > float(np.mean(mod_norm))
-
-
-def matlab_postprocess_end_idx(n_samples: int, fs: float, rb: float, M: int):
-    # Mirrors preprocess_data.m and matched_downsample.m.
-    t_total = (float(n_samples) - 1.0) / float(fs)
-    n_bits = math.floor(t_total * float(rb))
-    return min(int(math.floor(float(M) / 2.0 + float(M) * n_bits)), int(n_samples))
 
 
 def winsorize(x: np.ndarray, q: float):
@@ -487,12 +370,10 @@ def optimize_run_channel(
     fs: float,
     classical_limit: float,
     m_values,
-    rb_hz: float,
     phase_multiplier: int,
     lag_range: int,
     clip_mode: str,
     disallow_brickwall_filters: bool,
-    postprocess_only: bool = False,
 ):
     filter_defs_all = [
         ("none", None),
@@ -523,79 +404,6 @@ def optimize_run_channel(
     lag_defs = list(range(-int(lag_range), int(lag_range) + 1))
 
     best: Candidate | None = None
-
-    matlab_M = max(4, int(round(float(fs) / float(rb_hz)))) if float(rb_hz) > 0 else None
-    for M in m_values:
-        if M < 4:
-            continue
-        if matlab_M is not None and int(M) != int(matlab_M):
-            continue
-        rb = float(rb_hz) if float(rb_hz) > 0 else fs / float(M)
-        try:
-            sig_proc = matlab_deterministic_signal(homo, fs, rb, M)
-            mod_bits = digitize_modulation_like_matlab(mod)
-            end_idx = matlab_postprocess_end_idx(min(sig_proc.size, mod_bits.size), fs, rb, M)
-        except Exception:
-            sig_proc = None
-            mod_bits = None
-            end_idx = 0
-
-        if sig_proc is not None and mod_bits is not None and end_idx >= 8 * M:
-            n_phase = max(1, int(phase_multiplier) * int(M))
-            for phase in range(n_phase):
-                hs = sig_proc[phase:end_idx:M]
-                bits = mod_bits[phase:end_idx:M]
-                n = min(hs.size, bits.size)
-                if n < 101:
-                    continue
-                # MATLAB loops to length(dsA)-1 during SNR estimation and fitting.
-                hs = hs[: n - 1]
-                b = bits[: n - 1]
-                p = float(np.mean(b))
-                if p < 0.05 or p > 0.95:
-                    continue
-                xp = hs[b]
-                xm = hs[~b]
-                metrics = compute_metrics(xp, xm)
-                if metrics is None:
-                    continue
-                score = float(metrics["asym_xp"])
-                snre = float(metrics["asym_xp"])
-                margin = snre - classical_limit
-                advantage_db = compute_advantage_db(snre, classical_limit)
-                cand = Candidate(
-                    run_index=run_index,
-                    run_dir=run_dir,
-                    run_relpath=run_relpath,
-                    channel=channel_name,
-                    snre=snre,
-                    score=score,
-                    margin_vs_classical=margin,
-                    advantage_db=advantage_db,
-                    method=(
-                        "filter=matlab_butter5_filtfilt_0p6Rb; detrend=matlab_mean_movmean_2M; "
-                        f"clip=none; threshold=matlab_mod_mean; invert=False; metric=asym_xp; "
-                        f"M={M}; phase={phase}; lag=0"
-                    ),
-                    filter_name="matlab_butter5_filtfilt_0p6Rb",
-                    detrend_name="matlab_mean_movmean_2M",
-                    clip_name="none",
-                    threshold_name="matlab_mod_mean",
-                    invert=False,
-                    metric="asym_xp",
-                    M=M,
-                    phase=phase,
-                    lag=0,
-                    n_points=int(n - 1),
-                    class_balance=p,
-                    homo_file="",
-                    mod_file="",
-                )
-                if (best is None) or (cand.score > best.score):
-                    best = cand
-
-    if postprocess_only:
-        return best
 
     for M in m_values:
         if M < 4:
@@ -721,7 +529,6 @@ def main():
     lag_range = max(0, int(args.lag_range))
     clip_mode = str(args.clip_mode)
     disallow_brickwall_filters = bool(args.disallow_brickwall_filters)
-    postprocess_only = bool(args.postprocess_only)
     rb_by_channel = {"S1": float(args.rb_s1), "S2": float(args.rb_s2)}
     fallback_classical_from_run = int(args.fallback_classical_from_run)
     run_index_file = str(args.run_index_file or "").strip()
@@ -781,7 +588,6 @@ def main():
         f"Starting optimization: root={root}, runs={len(runs)}, "
         f"m_values={m_values}, dynamic_m={dynamic_m}, phase_multiplier={phase_multiplier}, "
         f"lag_range={lag_range}, clip_mode={clip_mode}, disallow_brickwall_filters={disallow_brickwall_filters}, "
-        f"postprocess_only={postprocess_only}, exploratory_grid={not postprocess_only}, "
         f"rb_s1={rb_by_channel['S1']}, rb_s2={rb_by_channel['S2']}, "
         f"report={report_path}, json={json_path}, run_index_file={run_index_file or 'n/a'}, "
         f"recursive_runs={recursive_runs}"
@@ -882,12 +688,10 @@ def main():
                     fs,
                     classical[ch_name],
                     m_candidates,
-                    rb_by_channel[ch_name],
                     phase_multiplier,
                     lag_range,
                     clip_mode,
                     disallow_brickwall_filters,
-                    postprocess_only,
                 )
                 if best is None:
                     continue
@@ -962,8 +766,6 @@ def main():
         "lag_range": lag_range,
         "clip_mode": clip_mode,
         "disallow_brickwall_filters": disallow_brickwall_filters,
-        "postprocess_only": postprocess_only,
-        "exploratory_grid": not postprocess_only,
         "classical_source": classical_source,
         "best_by_channel": {
             ch: {
@@ -1136,8 +938,6 @@ def main():
         f"lag sweep: `[-{lag_range}, +{lag_range}]`."
     )
     lines.append(f"- Clip mode: `{clip_mode}`.")
-    lines.append(f"- Exploratory grid enabled: `{not postprocess_only}`.")
-    lines.append(f"- MATLAB postprocess-compatible candidate included: `True`.")
     lines.append(f"- Brick-wall filters disallowed: `{disallow_brickwall_filters}`.")
     lines.append(f"- Run discovery mode: `{'recursive' if recursive_runs else 'single-level'}`.")
 
