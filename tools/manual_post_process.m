@@ -169,6 +169,16 @@ for k = 1:numel(steps)
     fprintf('%-12s  %+12.4f  %+12.4f\n', s, v1, v2);
 end
 fprintf('\n');
+
+% optimal parameter table
+fprintf('%-20s  %14s  %14s\n', 'Parameter', 'S1', 'S2');
+fprintf('%s\n', repmat('-', 1, 52));
+fprintf('%-20s  %14.8f  %14.8f\n', 'LP filter ratio',  cfg.s1.pipeline.filter.ratio,    cfg.s2.pipeline.filter.ratio);
+fprintf('%-20s  %14.8f  %14.8f\n', 'HP filter ratio',  cfg.s1.pipeline.filter.ratio_hp, cfg.s2.pipeline.filter.ratio_hp);
+fprintf('%-20s  %14d  %14d\n',     'Detrend window',   cfg.s1.pipeline.detrend.window,  cfg.s2.pipeline.detrend.window);
+fprintf('%-20s  %14d  %14d\n',     'Phase',            cfg.s1.pipeline.phase,           cfg.s2.pipeline.phase);
+fprintf('%-20s  %14d  %14d\n',     'Lag',              cfg.s1.pipeline.lag,             cfg.s2.pipeline.lag);
+fprintf('\n');
 end
 
 function p = default_pipeline()
