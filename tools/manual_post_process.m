@@ -157,13 +157,17 @@ else
     fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
 end
 
+% load P_b from processed.mat (stored in W, reported in uW)
+pb_s1_uW = load_pb_uW(cfg.paths.s1_run_dir);
+pb_s2_uW = load_pb_uW(cfg.paths.s2_run_dir);
+
 % tab-separated results (paste into Excel)
-fprintf('\nLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
-fprintf('%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
-    cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
+fprintf('\nP_b (uW)\tLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
+fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    pb_s1_uW, cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
     cfg.s1.pipeline.detrend.window, cfg.s1.pipeline.phase, cfg.s1.pipeline.lag, out.s1.adv_db);
-fprintf('%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
-    cfg.s2.pipeline.filter.ratio, cfg.s2.pipeline.filter.ratio_hp, ...
+fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    pb_s2_uW, cfg.s2.pipeline.filter.ratio, cfg.s2.pipeline.filter.ratio_hp, ...
     cfg.s2.pipeline.detrend.window, cfg.s2.pipeline.phase, cfg.s2.pipeline.lag, out.s2.adv_db);
 fprintf('\n');
 end
@@ -531,6 +535,26 @@ grid(ax, 'on');
 xlabel(ax, 'Frequency (kHz)');
 ylabel(ax, 'Magnitude (dB, normalized)');
 legend;
+end
+
+function pb_uW = load_pb_uW(run_dir)
+%LOAD_PB_UW Load P_b (W) from processed.mat and return in microwatts.
+pb_uW = nan;
+p = fullfile(run_dir, 'processed.mat');
+if ~isfile(p)
+    warning('load_pb_uW: processed.mat not found in %s', run_dir);
+    return;
+end
+try
+    s = load(p, 'P_b');
+    if isfield(s, 'P_b')
+        pb_uW = double(s.P_b) * 1e6;
+    else
+        warning('load_pb_uW: P_b not found in %s', p);
+    end
+catch e
+    warning('load_pb_uW: failed to load %s — %s', p, e.message);
+end
 end
 
 function [snr_c, source] = load_snr_c_from_processed_summary(run_dir, channel_name)
