@@ -15,25 +15,25 @@ override = struct();
 
 % filters (causal)
 override.causal_filt.s1.skip = true;
-override.causal_filt.s1.bestLP = 0.57486850;
-override.causal_filt.s1.bestHP = 0.62372881;
+override.causal_filt.s1.bestLP = 0.6;
+override.causal_filt.s1.bestHP = 0.6;
 
 override.causal_filt.s2.skip = true;
-override.causal_filt.s2.bestLP = 0.52355348;
-override.causal_filt.s2.bestHP = 0.46271186;
+override.causal_filt.s2.bestLP = 0.6;
+override.causal_filt.s2.bestHP = 0.6;
 
 % detrend
-override.detrend.s1.skip = true;
+override.detrend.s1.skip = false;
 override.detrend.s1.window = 3;
 
-override.detrend.s2.skip = true;
+override.detrend.s2.skip = false;
 override.detrend.s2.window = 3;
 
 % phase
-override.phase.s1.skip = true;
+override.phase.s1.skip = false;
 override.phase.s1.best_phase = 8;
 
-override.phase.s2.skip = true;
+override.phase.s2.skip = false;
 override.phase.s2.best_phase = 12;
 
 % lag
@@ -43,23 +43,22 @@ override.lag.s1.best_lag = 0;
 override.lag.s2.skip = false;
 override.lag.s2.best_lag = 0;
 
-% % trim
-% override.trim.skip = false;
-% override.trim.best_trim_idx = 1;
-
 
 % geneate config
 cfg = struct();
 
 
 %% Explicit dataset roots (best S1/S2 from Advantage_Data/Deterministic)
-cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
-    'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
-    'Deterministic/positive_margin_4-22_batch2/batch_2/run_00151'];
-cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
-    'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
-    'Deterministic/positive_margin_4-20/batch_4/run_01082'];
+% cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+%     'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
+%     'Deterministic/positive_margin_4-22_batch2/batch_2/run_00151'];
+% cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+%     'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
+%     'Deterministic/positive_margin_4-20/batch_4/run_01082'];
 
+
+cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/NB_sweep_Data/Pb_1227uW_S1_batch_2_run_00440'];
+cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/NB_sweep_Data/Pb_1227uW_S2_batch_2_run_00350'];
 %% Channel file mapping (MAC convention)
 % S1: homodyne from scope_*_2.csv, modulation from scope_*_1.csv
 % S2: homodyne from scope_*_3.csv, modulation from scope_*_4.csv
@@ -77,15 +76,11 @@ cfg.s2.pipeline = default_pipeline();
 % Note: do not use trim_end + long transient filter
 cfg.s1.pipeline.M = 18;
 cfg.s1.pipeline.lag = 0; % -1
-cfg.s1.pipeline.trim.mode = 'none'; % 'none' | 'trim_start' | 'trim_end'
-cfg.s1.pipeline.trim.points = 2256;       % in downsampled points
 cfg.s1.pipeline.phase = 7;
 cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
 
 cfg.s2.pipeline.M = 16;
 cfg.s2.pipeline.lag = 1;
-cfg.s2.pipeline.trim.mode = 'none';
-cfg.s2.pipeline.trim.points = 2592;
 cfg.s2.pipeline.phase = 5;
 
 % Run both datasets init
@@ -94,19 +89,53 @@ out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
 out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
 out.cfg = cfg; % return cfg for debugging
 
+% initialize advantage tracker (adv_db after each applied step)
+out.tracker.s1.baseline = out.s1.adv_db;
+out.tracker.s2.baseline = out.s2.adv_db;
 
 %% ---- pipeline manual sweep per channel ----
 
 %%  manual filter sweep - LP + HP chain
 disp(" ");
 disp("----- Filter Sweep -----");
-cfg.verbose = false;
+cfg.verbose = true;
 
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
 
+return
+
 % S2
 [out,cfg] = causal_filter(out,cfg,override,'s2');
+
+% debugging
+% plot S2 time
+figure; hold on;
+slc = 2e3;
+slc_ds = floor(slc/cfg.s2.pipeline.M);
+slice_filt = out.s2.debug.filtered(1:slc);
+slice_raw = out.s2.debug.raw(1:slc);
+slice_at = out.s2.debug.after_trim(1:slc);
+ds_slice = out.s2.debug.ds.homo(1:slc_ds);
+
+
+t = linspace(1,slc,slc);
+t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
+t_ds = t_ds(t_ds <= slc-1);
+plot(t,slice_filt,'DisplayName','Filtered');
+plot(t,slice_at.*20,'DisplayName','After Trim');
+scatter(t_ds,ds_slice.*20,'DisplayName','DS');
+legend;
+theme light;
+ylim([min(slice_filt) max(slice_filt)]);
+
+
+% plot s2 hist
+figure; hold on;
+histogram(out.s2.debug.class.xp,NumBins=4e1);
+histogram(out.s2.debug.class.xm,NumBins=4e1);
+
+return
 
 
 
@@ -140,14 +169,10 @@ disp(" ");
 disp("----- Lag Sweep -----");
 cfg.verbose = true;
 % S1
-[out,cfg] = lag(out,cfg,'s1');
+[out,cfg] = lag(out,cfg,override,'s1');
 
 % S2
-[out,cfg] = lag(out,cfg,'s2');
-
-
-%% manual trim sweep
-% TODO
+[out,cfg] = lag(out,cfg,override,'s2');
 
 
 
@@ -165,6 +190,21 @@ if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
 else
     fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
 end
+
+% load P_b from processed.mat (stored in W, reported in uW)
+pb_s1_uW = load_pb_uW(cfg.paths.s1_run_dir);
+pb_s2_uW = load_pb_uW(cfg.paths.s2_run_dir);
+
+% tab-separated results (paste into Excel)
+fprintf('\nPrinting order: row 1 = S1; row 2 = S2\n');
+fprintf('\nP_b (uW)\tLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
+fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    pb_s1_uW, cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
+    cfg.s1.pipeline.detrend.window, cfg.s1.pipeline.phase, cfg.s1.pipeline.lag, out.s1.adv_db);
+fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    pb_s2_uW, cfg.s2.pipeline.filter.ratio, cfg.s2.pipeline.filter.ratio_hp, ...
+    cfg.s2.pipeline.detrend.window, cfg.s2.pipeline.phase, cfg.s2.pipeline.lag, out.s2.adv_db);
+fprintf('\n');
 end
 
 function p = default_pipeline()
@@ -185,14 +225,14 @@ p.lag = 0;
 p.trim.mode = 'none';
 p.trim.points = 0;
 
-p.filter.mode = 'fft_lp_ratio_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
+p.filter.mode = 'ratio_hp_lp_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
 p.filter.ratio = 0.6;             % cutoff = ratio * Rb
 p.filter.ratio_hp = 0.75;         % hp cutoff = ratio * Rb
 p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=3;
+p.gridSize=8;
 end
 
 function result = run_single_dataset(run_dir, ch_cfg, channel_name,verbose)
@@ -225,10 +265,10 @@ x_c = x_d;
 % m_l = x_m;
 
 % Stage 5: trimming
-[x_t, m_t] = apply_trim_stage(x_l, m_l, ch_cfg.pipeline.M, ch_cfg.pipeline.trim);
-% %skip trim
-% x_t = x_l;
-% m_t = m_l;
+% [x_t, m_t] = apply_trim_stage(x_l, m_l, ch_cfg.pipeline.M, ch_cfg.pipeline.trim);
+%skip trim
+x_t = x_l;
+m_t = m_l;
 
 
 % Stage 6: phase-select and downsample
@@ -532,6 +572,26 @@ ylabel(ax, 'Magnitude (dB, normalized)');
 legend;
 end
 
+function pb_uW = load_pb_uW(run_dir)
+%LOAD_PB_UW Load P_b (W) from processed.mat and return in microwatts.
+pb_uW = nan;
+p = fullfile(run_dir, 'processed.mat');
+if ~isfile(p)
+    warning('load_pb_uW: processed.mat not found in %s', run_dir);
+    return;
+end
+try
+    s = load(p, 'result');
+    if isfield(s, 'result') && isfield(s.result, 'phys1') && isfield(s.result.phys1, 'P_b')
+        pb_uW = double(s.result.phys1.P_b) * 1e6;
+    else
+        warning('load_pb_uW: result.phys1.P_b not found in %s', p);
+    end
+catch e
+    warning('load_pb_uW: failed to load %s — %s', p, e.message);
+end
+end
+
 function [snr_c, source] = load_snr_c_from_processed_summary(run_dir, channel_name)
 %LOAD_SNRC_FROM_PROCESSED_SUMMARY Read SNR_C for a selected run/channel.
 snr_c = nan;
@@ -706,8 +766,11 @@ function sweepr = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
 % appropriate config struct and run post process w/ updated vals
 cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal';
 
+t_run = 300; % approx time in ms
+t_total = t_run*length(lp)*length(hp)/1e3; % seconds
 % coarse grid
 SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
+run_num = 1;
 for r_lp = 1:numel(lp)
     % set LP cutoff
     cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
@@ -718,7 +781,7 @@ for r_lp = 1:numel(lp)
 
         % status update
         if(cfg.verbose)
-            disp(strcat("Sweeping grid index (",num2str(r_lp),",",num2str(r_hp),")"));
+            % disp(strcat("Sweeping grid index (",num2str(r_lp),",",num2str(r_hp),")"));
         end
 
         % run processing
@@ -726,6 +789,10 @@ for r_lp = 1:numel(lp)
 
         % store SNRe
         SNRr(r_lp,r_hp) = sx.snre;
+
+        % timing
+        run_num = run_num + 1;
+        disp(strcat("Reminaing time ~:",num2str(round(t_total-t_run*run_num/1e3,3))," s"));
     end
 
 end
@@ -809,6 +876,7 @@ if(strcmp(select,'s1'))
     cfg.s1.pipeline.filter.ratio = sweeprFine.bestLP;
     cfg.s1.pipeline.filter.ratio_hp = sweeprFine.bestHP;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.filter = out.s1.adv_db;
 
     % report
     fprintf('\n(S1) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
@@ -866,6 +934,7 @@ elseif(strcmp(select,'s2'))
     cfg.s2.pipeline.filter.ratio = sweeprFine.bestLP;
     cfg.s2.pipeline.filter.ratio_hp = sweeprFine.bestHP;
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.filter = out.s2.adv_db;
 
     % report
     fprintf('\n(S2) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
@@ -895,14 +964,14 @@ if(strcmp(select,'s1'))
         SNRr = zeros(size(window_options));
 
         % mode for intra-bit window sizes
-        cfg.s1.pipeline.detrend.s1.mode = "custom_movmean_subtract";
+        cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
 
         % figure creation
         % figure; hold on; ax=gca;
 
         for w =1:numel(window_options)
 
-            cfg.s1.pipeline.detrend.s1.window = window_options(w);
+            cfg.s1.pipeline.detrend.window = window_options(w);
 
             % run processing
             out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
@@ -934,6 +1003,7 @@ if(strcmp(select,'s1'))
     % run processing w/ best phase
 
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.detrend = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Window = %.f', ...
@@ -986,6 +1056,7 @@ elseif(strcmp(select,'s2'))
     % run processing w/ best phase
 
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.detrend = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Window = %.f', ...
@@ -1035,8 +1106,9 @@ if(strcmp(select,'s1'))
     end
 
     % apply best phase
-    cfg.s1.pipeline.s1.phase = best_phase;
+    cfg.s1.pipeline.phase = best_phase;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.phase = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Phase = %.f', ...
@@ -1082,6 +1154,7 @@ elseif(strcmp(select,'s2'))
     % apply best phase
     cfg.s2.pipeline.phase = best_phase;
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.phase = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Phase = %.f', ...
@@ -1093,7 +1166,7 @@ else
 end
 end
 
-function [out,cfg] = lag(out,cfg,select)
+function [out,cfg] = lag(out,cfg,override,select)
 if(strcmp(select,'s1'))
     if(~override.lag.s1.skip)
         % options
@@ -1126,12 +1199,13 @@ if(strcmp(select,'s1'))
         xlabel('lag'); ylabel('SNRe');
         title('S1 Lag Sweep Optimization');
     else
-        best_lag = override.lag.best_lag;
+        best_lag = override.lag.s1.best_lag;
     end
 
     % apply best phase
     cfg.s1.pipeline.lag = best_lag;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.lag = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Lag = %.f', ...
@@ -1169,12 +1243,13 @@ elseif(strcmp(select,'s2'))
         xlabel('lag'); ylabel('SNRe');
         title('S2 Lag Sweep Optimization');
     else
-        best_lag = override.lag.best_lag;
+        best_lag = override.lag.s2.best_lag;
     end
 
     % apply best phase
     cfg.s2.pipeline.lag = best_lag;
-    out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s1, 'S2',cfg.verbose);
+    out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.lag = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Lag = %.f', ...

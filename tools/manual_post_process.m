@@ -14,13 +14,13 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.s1.skip = false;
-override.causal_filt.s1.bestLP = 0.57486850;
-override.causal_filt.s1.bestHP = 0.62372881;
+override.causal_filt.s1.skip = true;
+override.causal_filt.s1.bestLP = 1;
+override.causal_filt.s1.bestHP = 0.01;
 
-override.causal_filt.s2.skip = false;
-override.causal_filt.s2.bestLP = 0.52355348;
-override.causal_filt.s2.bestHP = 0.46271186;
+override.causal_filt.s2.skip = true;
+override.causal_filt.s2.bestLP = 0.6;
+override.causal_filt.s2.bestHP = 0.5;
 
 % detrend
 override.detrend.s1.skip = false;
@@ -72,22 +72,24 @@ cfg.s2.mod_channel = 4;
 cfg.s1.pipeline = default_pipeline();
 cfg.s2.pipeline = default_pipeline();
 
-% : start from prior best-known settings.
-% Note: do not use trim_end + long transient filter
-cfg.s1.pipeline.M = 18;
-cfg.s1.pipeline.lag = 0; % -1
-cfg.s1.pipeline.phase = 7;
-cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
-
-cfg.s2.pipeline.M = 16;
-cfg.s2.pipeline.lag = 1;
-cfg.s2.pipeline.phase = 5;
-
 % Run both datasets init
 cfg.verbose=false;
 out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
 out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-out.cfg = cfg; % return cfg for debugging
+% out.cfg = cfg; % return cfg for debugging
+
+% update config settings based on run
+% Note: do not use trim_end + long transient filter
+cfg.s1.pipeline.M = floor(out.s1.fs/cfg.s1.pipeline.Rb);
+cfg.s1.pipeline.lag = 0; % -1
+cfg.s1.pipeline.phase = 7;
+cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
+
+cfg.s2.pipeline.M = floor(out.s2.fs/cfg.s2.pipeline.Rb);
+cfg.s2.pipeline.lag = 1;
+cfg.s2.pipeline.phase = 5;
+
+
 
 % initialize advantage tracker (adv_db after each applied step)
 out.tracker.s1.baseline = out.s1.adv_db;
@@ -96,6 +98,8 @@ out.tracker.s2.baseline = out.s2.adv_db;
 %% ---- pipeline manual sweep per channel ----
 
 %%  manual filter sweep - LP + HP chain
+
+
 disp(" ");
 disp("----- Filter Sweep -----");
 cfg.verbose = true;
@@ -103,8 +107,46 @@ cfg.verbose = true;
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
 
+fprintf('fs = %.1f Hz\n', out.s1.fs);
+fprintf('Rb = %.1f Hz\n', cfg.s1.pipeline.Rb);
+fprintf('LP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio * cfg.s1.pipeline.Rb);
+fprintf('HP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio_hp * cfg.s1.pipeline.Rb);
+
+
+
+return
+
 % S2
 [out,cfg] = causal_filter(out,cfg,override,'s2');
+
+% debugging
+% plot S2 time
+figure; hold on;
+slc = 2e3;
+slc_ds = floor(slc/cfg.s2.pipeline.M);
+slice_filt = out.s2.debug.filtered(1:slc);
+slice_raw = out.s2.debug.raw(1:slc);
+slice_at = out.s2.debug.after_trim(1:slc);
+ds_slice = out.s2.debug.ds.homo(1:slc_ds);
+
+
+t = linspace(1,slc,slc);
+t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
+t_ds = t_ds(t_ds <= slc-1);
+plot(t,slice_filt,'DisplayName','Filtered');
+plot(t,slice_at.*20,'DisplayName','After Trim');
+scatter(t_ds,ds_slice.*20,'DisplayName','DS');
+legend;
+theme light;
+ylim([min(slice_filt) max(slice_filt)]);
+
+
+% plot s2 hist
+figure; hold on;
+histogram(out.s2.debug.class.xp,NumBins=4e1);
+histogram(out.s2.debug.class.xm,NumBins=4e1);
+
+return
 
 
 
@@ -194,14 +236,16 @@ p.lag = 0;
 p.trim.mode = 'none';
 p.trim.points = 0;
 
-p.filter.mode = 'fft_lp_ratio_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
+p.filter.mode = 'ratio_hp_lp_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
 p.filter.ratio = 0.6;             % cutoff = ratio * Rb
 p.filter.ratio_hp = 0.75;         % hp cutoff = ratio * Rb
 p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=30;
+p.gridSize=8;
+p.Rb=8e3; % bit rate
+
 end
 
 function result = run_single_dataset(run_dir, ch_cfg, channel_name,verbose)
@@ -213,10 +257,9 @@ assert(numel(t_h) == numel(x_h), 'Invalid homodyne data shape.');
 assert(numel(t_m) == numel(x_m), 'Invalid modulation data shape.');
 
 fs = infer_fs(t_h);
-Rb = fs / ch_cfg.pipeline.M;
 
 % Stage 1: filtering
-x_f = apply_filter_stage(x_h, fs, Rb, ch_cfg.pipeline.filter);
+x_f = apply_filter_stage(x_h, fs, ch_cfg.pipeline.Rb, ch_cfg.pipeline.filter);
 
 % Stage 2: detrending
 x_d = apply_detrend_stage(x_f, ch_cfg.pipeline.M, ch_cfg.pipeline.detrend);
@@ -255,7 +298,6 @@ result.snre = metrics.(ch_cfg.pipeline.metric);
 result.metrics = metrics;
 result.n_points = numel(xs);
 result.fs = fs;
-result.rb = Rb;
 result.run_dir = run_dir;
 result.channel = channel_name;
 result.paths.homo = homo_path;
@@ -326,13 +368,15 @@ switch lower(string(fcfg.mode))
     case "ratio_hp_lp_causal"
         % low pass
         cutoff = fcfg.ratio * Rb;
-        [b,a] = butter(15,cutoff/(fs/2),"low");
-        y = filter(b,a,x);
+        [z,p,k] = butter(15, cutoff/(fs/2), "low");
+        sos = zp2sos(z,p,k);           % convert to SOS
+        y = sosfilt(sos, x);           % numerically stable filtering
 
         % high pass
         cutoff = fcfg.ratio_hp * Rb;
-        [b,a] = butter(3,cutoff/(fs/2),"high");
-        y = filter(b,a,y);
+        [z,p,k] = butter(3, cutoff/(fs/2), "high");
+        sos = zp2sos(z,p,k);
+        y = sosfilt(sos, y);
 
     case "fft_lp_ratio_causal"
         cutoff = fcfg.ratio * Rb;
