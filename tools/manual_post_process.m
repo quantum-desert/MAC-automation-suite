@@ -236,6 +236,31 @@ p.Rb=8e3; % bit rate
 
 end
 
+% Precompute everything up to filtering (done once)
+function pre = precompute_dataset(run_dir, ch_cfg)
+    [homo_path, mod_path] = resolve_scope_paths(run_dir, ch_cfg.homo_channel, ch_cfg.mod_channel);
+    [t_h, x_h] = read_scope_csv(homo_path);
+    [~,  x_m] = read_scope_csv(mod_path);
+    pre.x_h = x_h;
+    pre.x_m = x_m;
+    pre.fs  = infer_fs(t_h);
+    pre.Rb  = pre.fs / ch_cfg.pipeline.M;
+end
+
+function snre = eval_filter(pre, ch_cfg, lp_ratio, hp_ratio)
+    ch_cfg.pipeline.filter.ratio    = lp_ratio;
+    ch_cfg.pipeline.filter.ratio_hp = hp_ratio;
+    
+    x_f = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, ch_cfg.pipeline.filter);
+    x_d = apply_detrend_stage(x_f, ch_cfg.pipeline.M, ch_cfg.pipeline.detrend);
+    [x_l, m_l] = apply_lag_stage(x_d, pre.x_m, ch_cfg.pipeline.lag);
+    [xs, ms] = downsample_with_phase(x_l, m_l, ch_cfg.pipeline.phase, ch_cfg.pipeline.M);
+    bits = threshold_bits(ms, ch_cfg.pipeline.threshold.mode, ch_cfg.pipeline.invert_bits);
+    xp = xs(bits); xm = xs(~bits);
+    metrics = compute_snre_metrics(xp, xm);
+    snre = metrics.(ch_cfg.pipeline.metric);
+end
+
 function result = run_single_dataset(run_dir, ch_cfg, channel_name,verbose)
 [homo_path, mod_path] = resolve_scope_paths(run_dir, ch_cfg.homo_channel, ch_cfg.mod_channel);
 [t_h, x_h] = read_scope_csv(homo_path);
@@ -767,35 +792,21 @@ function sweepr = filter_grid_search(lp,hp,sx,sx_fname,cfg,plot_opts)
 % appropriate config struct and run post process w/ updated vals
 cfg.(sx_fname).pipeline.filter.mode = 'ratio_hp_lp_causal';
 
-t_run = 300; % approx time in ms
-t_total = t_run*length(lp)*length(hp)/1e3; % seconds
-% coarse grid
+t_run = 10; % approx time in ms
+t_total = t_run*length(lp)*length(hp); % ms
+%  grid
 SNRr = nan(length(lp),length(hp)); % (lp, hp, SNRe)
-run_num = 1;
+run_num = 0;
+
+pre = precompute_dataset(sx.run_dir, cfg.(sx_fname));
 for r_lp = 1:numel(lp)
-    % set LP cutoff
-    cfg.(sx_fname).pipeline.filter.ratio = lp(r_lp);
-
     for r_hp = 1:numel(hp)
-        % set HP cutoff
-        cfg.(sx_fname).pipeline.filter.ratio_hp = hp(r_hp);
-
-        % status update
-        if(cfg.verbose)
-            % disp(strcat("Sweeping grid index (",num2str(r_lp),",",num2str(r_hp),")"));
-        end
-
-        % run processing
-        sx = run_single_dataset(sx.run_dir, cfg.(sx_fname), sx.channel,cfg.verbose);
-
-        % store SNRe
-        SNRr(r_lp,r_hp) = sx.snre;
-
+        SNRr(r_lp, r_hp) = eval_filter(pre, cfg.(sx_fname), lp(r_lp), hp(r_hp));
         % timing
         run_num = run_num + 1;
-        disp(strcat("Reminaing time ~:",num2str(round(t_total-t_run*run_num/1e3,3))," s"));
+        disp(strcat("Reminaing time ~:",num2str(round(t_total-t_run*run_num,3))," ms"));
+        
     end
-
 end
 fixedMin=min(SNRr(:));
 fixedMax=max(SNRr(:));
