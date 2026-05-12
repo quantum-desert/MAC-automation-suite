@@ -14,11 +14,11 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.s1.skip = true;
+override.causal_filt.s1.skip = false;
 override.causal_filt.s1.bestLP = 1.33;
 override.causal_filt.s1.bestHP = 0.7;
 
-override.causal_filt.s2.skip = true;
+override.causal_filt.s2.skip = false;
 override.causal_filt.s2.bestLP = 1.08571429;
 override.causal_filt.s2.bestHP = 0.7;
 
@@ -819,8 +819,8 @@ if(strcmp(select,'s1'))
         end
         % S1
         %  coarse grid search
-        lp1 = linspace(0.1,2,cfg.s1.pipeline.gridSize);
-        hp1 = linspace(0.2,0.7,cfg.s1.pipeline.gridSize);
+        lp1 = linspace(cfg.s1.pipeline.gridRange(1),cfg.s1.pipeline.gridRange(2),cfg.s1.pipeline.gridSize);
+        hp1 = linspace(cfg.s1.pipeline.gridRange(1),cfg.s1.pipeline.gridRange(2),cfg.s1.pipeline.gridSize);
 
         plot_opts = struct();
         plot_opts.visualize = true;
@@ -877,8 +877,8 @@ elseif(strcmp(select,'s2'))
         end
         % S2
         %  coarse grid search
-        lp1 = linspace(0.1,2,cfg.s2.pipeline.gridSize);
-        hp1 = linspace(0.2,0.7,cfg.s2.pipeline.gridSize);
+        lp1 = linspace(cfg.s2.pipeline.gridRange(1),cfg.s2.pipeline.gridRange(2),cfg.s2.pipeline.gridSize);
+        hp1 = linspace(cfg.s2.pipeline.gridRange(1),cfg.s2.pipeline.gridRange(2),cfg.s2.pipeline.gridSize);
 
         plot_opts = struct();
         plot_opts.visualize = true;
