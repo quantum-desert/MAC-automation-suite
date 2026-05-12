@@ -86,6 +86,9 @@ out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
 out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
 out.cfg = cfg; % return cfg for debugging
 
+% initialize advantage tracker (adv_db after each applied step)
+out.tracker.s1.baseline = out.s1.adv_db;
+out.tracker.s2.baseline = out.s2.adv_db;
 
 %% ---- pipeline manual sweep per channel ----
 
@@ -153,6 +156,19 @@ if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
 else
     fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
 end
+
+% advantage tracker table
+fprintf('\n%-12s  %12s  %12s\n', 'Step', 'S1 adv (dB)', 'S2 adv (dB)');
+fprintf('%s\n', repmat('-', 1, 40));
+steps = {'baseline','filter','detrend','phase','lag'};
+for k = 1:numel(steps)
+    s = steps{k};
+    v1 = nan; v2 = nan;
+    if isfield(out.tracker.s1, s), v1 = out.tracker.s1.(s); end
+    if isfield(out.tracker.s2, s), v2 = out.tracker.s2.(s); end
+    fprintf('%-12s  %+12.4f  %+12.4f\n', s, v1, v2);
+end
+fprintf('\n');
 end
 
 function p = default_pipeline()
@@ -797,6 +813,7 @@ if(strcmp(select,'s1'))
     cfg.s1.pipeline.filter.ratio = sweeprFine.bestLP;
     cfg.s1.pipeline.filter.ratio_hp = sweeprFine.bestHP;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.filter = out.s1.adv_db;
 
     % report
     fprintf('\n(S1) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
@@ -854,6 +871,7 @@ elseif(strcmp(select,'s2'))
     cfg.s2.pipeline.filter.ratio = sweeprFine.bestLP;
     cfg.s2.pipeline.filter.ratio_hp = sweeprFine.bestHP;
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.filter = out.s2.adv_db;
 
     % report
     fprintf('\n(S2) Fine scan best:\nLP ratio = %.8f, HP ratio = %.8f', ...
@@ -922,6 +940,7 @@ if(strcmp(select,'s1'))
     % run processing w/ best phase
 
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.detrend = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Window = %.f', ...
@@ -974,6 +993,7 @@ elseif(strcmp(select,'s2'))
     % run processing w/ best phase
 
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.detrend = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Window = %.f', ...
@@ -1025,6 +1045,7 @@ if(strcmp(select,'s1'))
     % apply best phase
     cfg.s1.pipeline.phase = best_phase;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.phase = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Phase = %.f', ...
@@ -1070,6 +1091,7 @@ elseif(strcmp(select,'s2'))
     % apply best phase
     cfg.s2.pipeline.phase = best_phase;
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.phase = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Phase = %.f', ...
@@ -1120,6 +1142,7 @@ if(strcmp(select,'s1'))
     % apply best phase
     cfg.s1.pipeline.lag = best_lag;
     out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
+    out.tracker.s1.lag = out.s1.adv_db;
 
     % report
     fprintf('\nS1 Best Lag = %.f', ...
@@ -1163,6 +1186,7 @@ elseif(strcmp(select,'s2'))
     % apply best phase
     cfg.s2.pipeline.lag = best_lag;
     out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
+    out.tracker.s2.lag = out.s2.adv_db;
 
     % report
     fprintf('\nS2 Best Lag = %.f', ...
