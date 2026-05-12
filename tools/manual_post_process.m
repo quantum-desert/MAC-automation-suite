@@ -15,33 +15,33 @@ override = struct();
 
 % filters (causal)
 override.causal_filt.s1.skip = true;
-override.causal_filt.s1.bestLP = 1.02321429;
-override.causal_filt.s1.bestHP = 1.15076531;
+override.causal_filt.s1.bestLP = 0.99298246;
+override.causal_filt.s1.bestHP = 0.98690958;
 
 override.causal_filt.s2.skip = true;
-override.causal_filt.s2.bestLP = 1.02321429;
-override.causal_filt.s2.bestHP = 1.16734694;
+override.causal_filt.s2.bestLP = 0.99298246;
+override.causal_filt.s2.bestHP = 0.98690958;
 
 % detrend
 override.detrend.s1.skip = true;
-override.detrend.s1.window = 317;
+override.detrend.s1.window = 3;
 
 override.detrend.s2.skip = true;
-override.detrend.s2.window = 358;
+override.detrend.s2.window = 3;
 
 % phase
 override.phase.s1.skip = true;
-override.phase.s1.best_phase = 269;
+override.phase.s1.best_phase = 231;
 
 override.phase.s2.skip = true;
-override.phase.s2.best_phase = 238;
+override.phase.s2.best_phase = 264;
 
 % lag
-override.lag.s1.skip = false;
-override.lag.s1.best_lag = 0;
+override.lag.s1.skip = true;
+override.lag.s1.best_lag = 6;
 
-override.lag.s2.skip = false;
-override.lag.s2.best_lag = 0;
+override.lag.s2.skip = true;
+override.lag.s2.best_lag = 6;
 
 
 % geneate config
@@ -118,6 +118,8 @@ cfg.verbose = false;
 
 
 
+
+
 %% manual detrend window sweep
 disp(" ");
 disp("----- Detrend Sweep -----");
@@ -128,21 +130,6 @@ cfg.verbose = false;
 
 % S2
 [out,cfg] = detrend(out,cfg,override,'s2');
-
-
-%% manual phase sweep
-
-% 
-% disp(" ");
-% disp("----- Phase Sweep -----");
-% cfg.verbose = false;
-% % S1
-% [out,cfg] = phase(out,cfg,override,'s1');
-% 
-% % S2
-% [out,cfg] = phase(out,cfg,override,'s2');
-
-
 
 %% manual lag sweep
 
@@ -157,6 +144,21 @@ cfg.verbose = true;
 
 
 
+%% manual phase sweep
+
+
+disp(" ");
+disp("----- Phase Sweep -----");
+cfg.verbose = true;
+% S1
+[out,cfg] = phase(out,cfg,override,'s1');
+
+% S2
+[out,cfg] = phase(out,cfg,override,'s2');
+
+
+
+
 %% Simple summary
 simple_summary(out);
 
@@ -164,13 +166,36 @@ simple_summary(out);
 pb_s1_uW = load_pb_uW(cfg.paths.s1_run_dir);
 pb_s2_uW = load_pb_uW(cfg.paths.s2_run_dir);
 
+% tracker results
+fprintf('\n%-12s  %12s  %12s\n', 'Step', 'S1 adv (dB)', 'S2 adv (dB)');
+fprintf('%s\n', repmat('-', 1, 40));
+steps = {'baseline','filter','detrend','phase','lag'};
+for k = 1:numel(steps)
+    s = steps{k};
+    v1 = nan; v2 = nan;
+    if isfield(out.tracker.s1, s), v1 = out.tracker.s1.(s); end
+    if isfield(out.tracker.s2, s), v2 = out.tracker.s2.(s); end
+    fprintf('%-12s  %+12.4f  %+12.4f\n', s, v1, v2);
+end
+fprintf('\n');
+
+% pretty results
+fprintf('\n%-20s  %14s  %14s\n', 'Parameter', 'S1', 'S2');
+fprintf('%s\n', repmat('-', 1, 52));
+fprintf('%-20s  %14.8f  %14.8f\n', 'LP filter ratio',  cfg.s1.pipeline.filter.ratio,    cfg.s2.pipeline.filter.ratio);
+fprintf('%-20s  %14.8f  %14.8f\n', 'HP filter ratio',  cfg.s1.pipeline.filter.ratio_hp, cfg.s2.pipeline.filter.ratio_hp);
+fprintf('%-20s  %14.0f  %14.0f\n', 'Detrend window',   cfg.s1.pipeline.detrend.window,  cfg.s2.pipeline.detrend.window);
+fprintf('%-20s  %14.0f  %14.0f\n', 'Phase',            cfg.s1.pipeline.phase,           cfg.s2.pipeline.phase);
+fprintf('%-20s  %14.0f  %14.0f\n', 'Lag',              cfg.s1.pipeline.lag,             cfg.s2.pipeline.lag);
+fprintf('\n');
+
 % tab-separated results (paste into Excel)
 fprintf('\nPrinting order: row 1 = S1; row 2 = S2\n');
 fprintf('\nP_b (uW)\tLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
-fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+fprintf('%.4f\t\t%.8f\t%.8f\t%d\t\t%d\t%d\t%.4f\n', ...
     pb_s1_uW, cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
     cfg.s1.pipeline.detrend.window, cfg.s1.pipeline.phase, cfg.s1.pipeline.lag, out.s1.adv_db);
-fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+fprintf('%.4f\t\t%.8f\t%.8f\t%d\t\t%d\t%d\t%.4f\n', ...
     pb_s2_uW, cfg.s2.pipeline.filter.ratio, cfg.s2.pipeline.filter.ratio_hp, ...
     cfg.s2.pipeline.detrend.window, cfg.s2.pipeline.phase, cfg.s2.pipeline.lag, out.s2.adv_db);
 fprintf('\n');
@@ -352,13 +377,13 @@ switch lower(string(fcfg.mode))
     case "ratio_hp_lp_causal"
         % low pass
         cutoff = fcfg.ratio * Rb;
-        [z,p,k] = butter(15, cutoff/(fs/2), "low");
+        [z,p,k] = butter(12, cutoff/(fs/2), "low");
         sos = zp2sos(z,p,k);           % convert to SOS
         y = sosfilt(sos, x);           % numerically stable filtering
 
         % high pass
         cutoff = fcfg.ratio_hp * Rb;
-        [z,p,k] = butter(6, cutoff/(fs/2), "high");
+        [z,p,k] = butter(5, cutoff/(fs/2), "high");
         sos = zp2sos(z,p,k);
         y = sosfilt(sos, y);
 
@@ -570,19 +595,19 @@ legend;
 end
 
 function pb_uW = load_pb_uW(run_dir)
-%LOAD_PB_UW Load P_b (W) from processed.mat and return in microwatts.
+%LOAD_PB_UW Load P_b (W) from physics_cfg.json and return in microwatts.
 pb_uW = nan;
-p = fullfile(run_dir, 'processed.mat');
+p = fullfile(run_dir, 'physics_cfg.json');
 if ~isfile(p)
-    warning('load_pb_uW: processed.mat not found in %s', run_dir);
+    warning('load_pb_uW: physics_cfg.json not found in %s', run_dir);
     return;
 end
 try
-    s = load(p, 'result');
-    if isfield(s, 'result') && isfield(s.result, 'phys1') && isfield(s.result.phys1, 'P_b')
-        pb_uW = double(s.result.phys1.P_b) * 1e6;
+    j = jsondecode(fileread(p))
+    if isfield(j, 'S1')
+        pb_uW = double(j.S1.P_b) * 1e6;
     else
-        warning('load_pb_uW: result.phys1.P_b not found in %s', p);
+        warning('load_pb_uW: P_b not found in %s', p);
     end
 catch e
     warning('load_pb_uW: failed to load %s — %s', p, e.message);
@@ -1058,23 +1083,26 @@ end
 function [out,cfg] = phase(out,cfg,override,select)
 if(strcmp(select,'s1'))
     if(~override.phase.s1.skip)
+        ch_cfg = cfg.s1;
         % options
         phase_options = [1:cfg.s1.pipeline.M];
         SNRr = zeros(size(phase_options));
 
-        for p =1:numel(phase_options)
+        % Precompute once before phase sweep
+        pre = precompute_dataset(out.s1.run_dir, cfg.s1);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s1.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
+        pre_lag.x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s1.pipeline.M, cfg.s1.pipeline.detrend);
+        pre_lag.x_m = pre.x_m;
+        [pre_phase.x_l, pre_phase.m_l] = apply_lag_stage(pre_lag.x_d, pre_lag.x_m, ch_cfg.pipeline.lag);
 
-            phase = phase_options(p);
-            cfg.s1.pipeline.phase = phase;
-
-            % run processing
-            out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
-
-            % store SNRe
-            SNRr(p) = out.s1.snre;
-
+        % Inner loop is now just indexing + threshold + metric
+        for p = 1:numel(phase_options)
+            [xs, ms] = downsample_with_phase(pre_phase.x_l, pre_phase.m_l, phase_options(p), ch_cfg.pipeline.M);
+            bits = threshold_bits(ms, ch_cfg.pipeline.threshold.mode, ch_cfg.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(p) = compute_snre_metrics(xp, xm).(ch_cfg.pipeline.metric);
         end
-
         % extract max
         [~,idx] = max(SNRr); best_phase = phase_options(idx);
 
@@ -1104,21 +1132,25 @@ if(strcmp(select,'s1'))
         out.s1.snre,out.s1.adv_db);
 elseif(strcmp(select,'s2'))
     if(~override.phase.s2.skip)
+        ch_cfg = cfg.s2;
         % options
         phase_options = [1:cfg.s2.pipeline.M];
         SNRr = zeros(size(phase_options));
 
-        for p =1:numel(phase_options)
+        % Precompute once before phase sweep
+        pre = precompute_dataset(out.s2.run_dir, cfg.s2);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s2.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
+        pre_lag.x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s2.pipeline.M, cfg.s2.pipeline.detrend);
+        pre_lag.x_m = pre.x_m;
+        [pre_phase.x_l, pre_phase.m_l] = apply_lag_stage(pre_lag.x_d, pre_lag.x_m, ch_cfg.pipeline.lag);
 
-            phase = phase_options(p);
-            cfg.s2.pipeline.phase = phase;
-
-            % run processing
-            out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-
-            % store SNRe
-            SNRr(p) = out.s2.snre;
-
+        % Inner loop is now just indexing + threshold + metric
+        for p = 1:numel(phase_options)
+            [xs, ms] = downsample_with_phase(pre_phase.x_l, pre_phase.m_l, phase_options(p), ch_cfg.pipeline.M);
+            bits = threshold_bits(ms, ch_cfg.pipeline.threshold.mode, ch_cfg.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(p) = compute_snre_metrics(xp, xm).(ch_cfg.pipeline.metric);
         end
 
         % extract max
