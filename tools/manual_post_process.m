@@ -14,8 +14,8 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.s1.skip = false;
-override.causal_filt.s1.bestLP = 1.08571429;
+override.causal_filt.s1.skip = true;
+override.causal_filt.s1.bestLP = 1.33;
 override.causal_filt.s1.bestHP = 0.7;
 
 override.causal_filt.s2.skip = true;
@@ -106,47 +106,13 @@ cfg.verbose = true;
 
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
-% 
-% fprintf('fs = %.1f Hz\n', out.s1.fs);
-% fprintf('Rb = %.1f Hz\n', cfg.s1.pipeline.Rb);
-% fprintf('LP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio * cfg.s1.pipeline.Rb);
-% fprintf('HP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio_hp * cfg.s1.pipeline.Rb);
-
 
 % S2
 [out,cfg] = causal_filter(out,cfg,override,'s2');
 
-simple_summary(out);
-return
+% simple_summary(out);
 
-% % debugging
-% % plot S2 time
-% figure; hold on;
-% slc = 2e3;
-% slc_ds = floor(slc/cfg.s2.pipeline.M);
-% slice_filt = out.s2.debug.filtered(1:slc);
-% slice_raw = out.s2.debug.raw(1:slc);
-% slice_at = out.s2.debug.after_trim(1:slc);
-% ds_slice = out.s2.debug.ds.homo(1:slc_ds);
-% 
-% 
-% t = linspace(1,slc,slc);
-% t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
-% t_ds = t_ds(t_ds <= slc-1);
-% plot(t,slice_filt,'DisplayName','Filtered');
-% plot(t,slice_at.*20,'DisplayName','After Trim');
-% scatter(t_ds,ds_slice.*20,'DisplayName','DS');
-% legend;
-% theme light;
-% ylim([min(slice_filt) max(slice_filt)]);
-% 
-% 
-% % plot s2 hist
-% figure; hold on;
-% histogram(out.s2.debug.class.xp,NumBins=4e1);
-% histogram(out.s2.debug.class.xm,NumBins=4e1);
 
-% return
 
 
 
@@ -158,7 +124,7 @@ disp("----- Detrend Sweep -----");
 
 % S2
 [out,cfg] = detrend(out,cfg,override,'s2');
-
+return
 
 %% manual phase sweep
 
@@ -231,7 +197,8 @@ p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=6;
+p.gridSize=30;
+p.gridRange = [0.1 1.1]
 p.Rb=8e3; % bit rate
 
 end
@@ -804,7 +771,7 @@ for r_lp = 1:numel(lp)
         SNRr(r_lp, r_hp) = eval_filter(pre, cfg.(sx_fname), lp(r_lp), hp(r_hp));
         % timing
         run_num = run_num + 1;
-        disp(strcat("Reminaing time ~:",num2str(round(t_total-t_run*run_num,3))," ms"));
+        disp(strcat("Remaining time ~:",num2str(round(t_total-t_run*run_num,3))," ms"));
         
     end
 end
@@ -972,28 +939,30 @@ function [out,cfg] = detrend(out,cfg,override,select)
 if(strcmp(select,'s1'))
     if(~override.detrend.s1.skip)
         % options
-        window_options = [1:10*cfg.s1.pipeline.M];
+        window_options = [1:3*cfg.s1.pipeline.M];
         SNRr = zeros(size(window_options));
 
         % mode for intra-bit window sizes
         cfg.s1.pipeline.detrend.mode = "custom_movmean_subtract";
 
-        % figure creation
-        % figure; hold on; ax=gca;
+        % Precompute once before detrend sweep
+        pre = precompute_dataset(out.s1.run_dir, cfg.s1);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s1.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
 
-        for w =1:numel(window_options)
-
-            cfg.s1.pipeline.detrend.window = window_options(w);
-
-            % run processing
-            out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
-
-            % store SNRe
-            SNRr(w) = out.s1.snre;
-
+        % Inner loop only runs detrend onward
+        for w = 1:numel(window_options)
+            x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s1.pipeline.M, ...
+                struct('mode','custom_movmean_subtract','window',window_options(w)));
+            [x_l, m_l] = apply_lag_stage(x_d, pre_detrend.x_m, cfg.s1.pipeline.lag);
+            [xs, ms]   = downsample_with_phase(x_l, m_l, cfg.s1.pipeline.phase, cfg.s1.pipeline.M);
+            bits = threshold_bits(ms, cfg.s1.pipeline.threshold.mode, cfg.s1.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(w) = compute_snre_metrics(xp, xm).(cfg.s1.pipeline.metric);
         end
+
         % extract max
-        [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
+        [~,idx] = max(SNRr); best_window = window_options(idx);
 
         % visualize SNRe trend
         if(cfg.verbose)
@@ -1025,26 +994,28 @@ if(strcmp(select,'s1'))
 elseif(strcmp(select,'s2'))
     if(~override.detrend.s2.skip)
         % options
-        window_options = [1:10*cfg.s2.pipeline.M];
+        window_options = [1:3*cfg.s2.pipeline.M];
         SNRr = zeros(size(window_options));
 
         % mode for intra-bit window sizes
         cfg.s2.pipeline.detrend.mode = "custom_movmean_subtract";
 
-        % figure creation
-        % figure; hold on; ax=gca;
+        % Precompute once before detrend sweep
+        pre = precompute_dataset(out.s2.run_dir, cfg.s2);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s2.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
 
-        for w =1:numel(window_options)
-
-            cfg.s2.pipeline.detrend.window = window_options(w);
-
-            % run processing
-            out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-
-            % store SNRe
-            SNRr(w) = out.s2.snre;
-
+        % Inner loop only runs detrend onward
+        for w = 1:numel(window_options)
+            x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s2.pipeline.M, ...
+                struct('mode','custom_movmean_subtract','window',window_options(w)));
+            [x_l, m_l] = apply_lag_stage(x_d, pre_detrend.x_m, cfg.s2.pipeline.lag);
+            [xs, ms]   = downsample_with_phase(x_l, m_l, cfg.s2.pipeline.phase, cfg.s2.pipeline.M);
+            bits = threshold_bits(ms, cfg.s2.pipeline.threshold.mode, cfg.s2.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(w) = compute_snre_metrics(xp, xm).(cfg.s2.pipeline.metric);
         end
+
         % extract max
         [maxSNR,idx] = max(SNRr); best_window = window_options(idx);
 
