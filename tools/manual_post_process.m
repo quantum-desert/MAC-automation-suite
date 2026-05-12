@@ -14,27 +14,27 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.s1.skip = false;
-override.causal_filt.s1.bestLP = 1.33;
-override.causal_filt.s1.bestHP = 0.7;
+override.causal_filt.s1.skip = true;
+override.causal_filt.s1.bestLP = 1.02321429;
+override.causal_filt.s1.bestHP = 1.15076531;
 
-override.causal_filt.s2.skip = false;
-override.causal_filt.s2.bestLP = 1.08571429;
-override.causal_filt.s2.bestHP = 0.7;
+override.causal_filt.s2.skip = true;
+override.causal_filt.s2.bestLP = 1.02321429;
+override.causal_filt.s2.bestHP = 1.16734694;
 
 % detrend
-override.detrend.s1.skip = false;
-override.detrend.s1.window = 3;
+override.detrend.s1.skip = true;
+override.detrend.s1.window = 317;
 
-override.detrend.s2.skip = false;
-override.detrend.s2.window = 3;
+override.detrend.s2.skip = true;
+override.detrend.s2.window = 358;
 
 % phase
-override.phase.s1.skip = false;
-override.phase.s1.best_phase = 8;
+override.phase.s1.skip = true;
+override.phase.s1.best_phase = 269;
 
-override.phase.s2.skip = false;
-override.phase.s2.best_phase = 12;
+override.phase.s2.skip = true;
+override.phase.s2.best_phase = 238;
 
 % lag
 override.lag.s1.skip = false;
@@ -88,6 +88,7 @@ cfg.s1.pipeline.filter.N = cfg.s1.pipeline.M;
 cfg.s2.pipeline.M = floor(out.s2.fs/cfg.s2.pipeline.Rb);
 cfg.s2.pipeline.lag = 1;
 cfg.s2.pipeline.phase = 5;
+cfg.s2.pipeline.filter.N = cfg.s2.pipeline.M;
 
 
 
@@ -102,7 +103,7 @@ out.tracker.s2.baseline = out.s2.adv_db;
 
 disp(" ");
 disp("----- Filter Sweep -----");
-cfg.verbose = true;
+cfg.verbose = false;
 
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
@@ -116,27 +117,30 @@ cfg.verbose = true;
 
 
 
+
 %% manual detrend window sweep
 disp(" ");
 disp("----- Detrend Sweep -----");
+cfg.verbose = false;
+
 % S1
 [out,cfg] = detrend(out,cfg,override,'s1');
 
 % S2
 [out,cfg] = detrend(out,cfg,override,'s2');
-return
+
 
 %% manual phase sweep
 
-
-disp(" ");
-disp("----- Phase Sweep -----");
-cfg.verbose = false;
-% S1
-[out,cfg] = phase(out,cfg,override,'s1');
-
-% S2
-[out,cfg] = phase(out,cfg,override,'s2');
+% 
+% disp(" ");
+% disp("----- Phase Sweep -----");
+% cfg.verbose = false;
+% % S1
+% [out,cfg] = phase(out,cfg,override,'s1');
+% 
+% % S2
+% [out,cfg] = phase(out,cfg,override,'s2');
 
 
 
@@ -183,22 +187,22 @@ p.clip.q = 0.005;
 p.threshold.mode = 'mean';        % 'mean' | 'median'
 p.invert_bits = true;
 
-p.metric = 'asym_xp';             % 'asym_xp' | 'asym_sym'
+p.metric = 'asym_sym';             % 'asym_xp' | 'asym_sym'
 p.M = 16;
 p.phase = 0;
 p.lag = 0;
 p.trim.mode = 'none';
 p.trim.points = 0;
 
-p.filter.mode = 'ratio_hp_lp_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'causal_1pole_lp'
+p.filter.mode = 'ratio_hp_lp_causal';   % 'none' | 'fft_lp_ratio' | 'fft_lp_ratio_causal' | 'ratio_hp_lp_causal' |  'moving_average' | 'boxcar'
 p.filter.ratio = 0.6;             % cutoff = ratio * Rb
 p.filter.ratio_hp = 0.75;         % hp cutoff = ratio * Rb
 p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=30;
-p.gridRange = [0.1 1.1]
+p.gridSize=20;
+p.gridRange = [0.4 1.3];
 p.Rb=8e3; % bit rate
 
 end
@@ -348,13 +352,13 @@ switch lower(string(fcfg.mode))
     case "ratio_hp_lp_causal"
         % low pass
         cutoff = fcfg.ratio * Rb;
-        [z,p,k] = butter(8, cutoff/(fs/2), "low");
+        [z,p,k] = butter(15, cutoff/(fs/2), "low");
         sos = zp2sos(z,p,k);           % convert to SOS
         y = sosfilt(sos, x);           % numerically stable filtering
 
         % high pass
         cutoff = fcfg.ratio_hp * Rb;
-        [z,p,k] = butter(3, cutoff/(fs/2), "high");
+        [z,p,k] = butter(6, cutoff/(fs/2), "high");
         sos = zp2sos(z,p,k);
         y = sosfilt(sos, y);
 
@@ -369,7 +373,7 @@ switch lower(string(fcfg.mode))
     case "causal_1pole_lp"
         y = causal_one_pole_lowpass(x, fs, fcfg.cutoff_hz);
     case "boxcar"
-        b = ones(1,fcfg.N)/fcfg.N; a=1;
+        b = ones(1,fcfg.N/2)/(fcfg.N/2); a=1;
         y = filter(b,a,x);
     otherwise
         error('Unknown filter mode: %s', string(fcfg.mode));
@@ -771,7 +775,7 @@ for r_lp = 1:numel(lp)
         SNRr(r_lp, r_hp) = eval_filter(pre, cfg.(sx_fname), lp(r_lp), hp(r_hp));
         % timing
         run_num = run_num + 1;
-        disp(strcat("Remaining time ~:",num2str(round(t_total-t_run*run_num,3))," ms"));
+        % disp(strcat("Remaining time ~:",num2str(round(t_total-t_run*run_num,3))," ms"));
         
     end
 end
@@ -1155,21 +1159,22 @@ if(strcmp(select,'s1'))
         % options
         lag_options = [-10:10];
         SNRr = zeros(size(lag_options));
-        verbose=false;
 
-        for l =1:numel(lag_options)
+        % Precompute once before lag sweep
+        pre = precompute_dataset(out.s1.run_dir, cfg.s1);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s1.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
+        pre_lag.x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s1.pipeline.M, cfg.s1.pipeline.detrend);
+        pre_lag.x_m = pre.x_m;
 
-            % select lag target
-            cfg.s1.pipeline.lag = lag_options(l);
-
-            % run processing
-            out.s1 = run_single_dataset(cfg.paths.s1_run_dir, cfg.s1, 'S1',cfg.verbose);
-
-            % store SNRe
-            SNRr(l) = out.s1.snre;
-
+        % Inner loop only runs lag onward
+        for l = 1:numel(lag_options)
+            [x_l, m_l] = apply_lag_stage(pre_lag.x_d, pre_lag.x_m, lag_options(l));
+            [xs, ms]   = downsample_with_phase(x_l, m_l, cfg.s1.pipeline.phase, cfg.s1.pipeline.M);
+            bits = threshold_bits(ms, cfg.s1.pipeline.threshold.mode, cfg.s1.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(l) = compute_snre_metrics(xp, xm).(cfg.s1.pipeline.metric);
         end
-
         % extract max
         [~,idx] = max(SNRr); best_lag = lag_options(idx);
 
@@ -1201,19 +1206,21 @@ elseif(strcmp(select,'s2'))
         lag_options = [-10:10];
         SNRr = zeros(size(lag_options));
 
-        for l =1:numel(lag_options)
+         % Precompute once before lag sweep
+        pre = precompute_dataset(out.s2.run_dir, cfg.s2);
+        pre_detrend.x_f  = apply_filter_stage(pre.x_h, pre.fs, pre.Rb, cfg.s2.pipeline.filter);
+        pre_detrend.x_m  = pre.x_m;
+        pre_lag.x_d = apply_detrend_stage(pre_detrend.x_f, cfg.s2.pipeline.M, cfg.s2.pipeline.detrend);
+        pre_lag.x_m = pre.x_m;
 
-            % select lag target
-            cfg.s2.pipeline.lag = lag_options(l);
-
-            % run processing
-            out.s2 = run_single_dataset(cfg.paths.s2_run_dir, cfg.s2, 'S2',cfg.verbose);
-
-            % store SNRe
-            SNRr(l) = out.s2.snre;
-
+        % Inner loop only runs lag onward
+        for l = 1:numel(lag_options)
+            [x_l, m_l] = apply_lag_stage(pre_lag.x_d, pre_lag.x_m, lag_options(l));
+            [xs, ms]   = downsample_with_phase(x_l, m_l, cfg.s2.pipeline.phase, cfg.s2.pipeline.M);
+            bits = threshold_bits(ms, cfg.s2.pipeline.threshold.mode, cfg.s2.pipeline.invert_bits);
+            xp = xs(bits); xm = xs(~bits);
+            SNRr(l) = compute_snre_metrics(xp, xm).(cfg.s2.pipeline.metric);
         end
-
         % extract max
         [~,idx] = max(SNRr); best_lag = lag_options(idx);
 
