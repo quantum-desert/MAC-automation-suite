@@ -157,27 +157,14 @@ else
     fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
 end
 
-% advantage tracker table
-fprintf('\n%-12s  %12s  %12s\n', 'Step', 'S1 adv (dB)', 'S2 adv (dB)');
-fprintf('%s\n', repmat('-', 1, 40));
-steps = {'baseline','filter','detrend','phase','lag'};
-for k = 1:numel(steps)
-    s = steps{k};
-    v1 = nan; v2 = nan;
-    if isfield(out.tracker.s1, s), v1 = out.tracker.s1.(s); end
-    if isfield(out.tracker.s2, s), v2 = out.tracker.s2.(s); end
-    fprintf('%-12s  %+12.4f  %+12.4f\n', s, v1, v2);
-end
-fprintf('\n');
-
-% optimal parameter table
-fprintf('%-20s  %14s  %14s\n', 'Parameter', 'S1', 'S2');
-fprintf('%s\n', repmat('-', 1, 52));
-fprintf('%-20s  %14.8f  %14.8f\n', 'LP filter ratio',  cfg.s1.pipeline.filter.ratio,    cfg.s2.pipeline.filter.ratio);
-fprintf('%-20s  %14.8f  %14.8f\n', 'HP filter ratio',  cfg.s1.pipeline.filter.ratio_hp, cfg.s2.pipeline.filter.ratio_hp);
-fprintf('%-20s  %14d  %14d\n',     'Detrend window',   cfg.s1.pipeline.detrend.window,  cfg.s2.pipeline.detrend.window);
-fprintf('%-20s  %14d  %14d\n',     'Phase',            cfg.s1.pipeline.phase,           cfg.s2.pipeline.phase);
-fprintf('%-20s  %14d  %14d\n',     'Lag',              cfg.s1.pipeline.lag,             cfg.s2.pipeline.lag);
+% tab-separated results (paste into Excel)
+fprintf('\nLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
+fprintf('%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
+    cfg.s1.pipeline.detrend.window, cfg.s1.pipeline.phase, cfg.s1.pipeline.lag, out.s1.adv_db);
+fprintf('%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
+    cfg.s2.pipeline.filter.ratio, cfg.s2.pipeline.filter.ratio_hp, ...
+    cfg.s2.pipeline.detrend.window, cfg.s2.pipeline.phase, cfg.s2.pipeline.lag, out.s2.adv_db);
 fprintf('\n');
 end
 
