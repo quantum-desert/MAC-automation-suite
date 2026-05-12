@@ -11,7 +11,9 @@ end
 
 % override structure defines which optimization steps to skip
 %  (apply known best values)
+
 override = struct();
+
 
 % filters (causal)
 override.causal_filt.s1.skip = true;
@@ -43,8 +45,11 @@ override.lag.s1.best_lag = 6;
 override.lag.s2.skip = true;
 override.lag.s2.best_lag = 6;
 
+% % override sweeping set
+set_skip_fields(override,false);
 
-% geneate config
+
+% generate config
 cfg = struct();
 
 
@@ -1296,5 +1301,16 @@ if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
     fprintf('S2 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s2.snr_c, out.s2.margin, out.s2.adv_db);
 else
     fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
+end
+end
+
+function s = set_skip_fields(s, val)
+fields = fieldnames(s);
+for k = 1:numel(fields)
+    if strcmp(fields{k}, 'skip')
+        s.(fields{k}) = val;
+    elseif isstruct(s.(fields{k}))
+        s.(fields{k}) = set_skip_fields(s.(fields{k}), val);
+    end
 end
 end
