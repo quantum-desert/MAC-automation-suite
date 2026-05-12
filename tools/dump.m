@@ -43,3 +43,29 @@
 % % xlabel('fc');
 % % ylabel('SNRe');
 
+% debugging
+% plot S2 time
+figure; hold on;
+slc = 2e3;
+slc_ds = floor(slc/cfg.s2.pipeline.M);
+slice_filt = out.s2.debug.filtered(1:slc);
+slice_raw = out.s2.debug.raw(1:slc);
+slice_at = out.s2.debug.after_trim(1:slc);
+ds_slice = out.s2.debug.ds.homo(1:slc_ds);
+
+
+t = linspace(1,slc,slc);
+t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
+t_ds = t_ds(t_ds <= slc-1);
+plot(t,slice_filt,'DisplayName','Filtered');
+plot(t,slice_at.*20,'DisplayName','After Trim');
+scatter(t_ds,ds_slice.*20,'DisplayName','DS');
+legend;
+theme light;
+ylim([min(slice_filt) max(slice_filt)]);
+
+
+% plot s2 hist
+figure; hold on;
+histogram(out.s2.debug.class.xp,NumBins=4e1);
+histogram(out.s2.debug.class.xm,NumBins=4e1);
