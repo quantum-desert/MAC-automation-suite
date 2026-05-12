@@ -546,11 +546,11 @@ if ~isfile(p)
     return;
 end
 try
-    s = load(p, 'P_b');
-    if isfield(s, 'P_b')
-        pb_uW = double(s.P_b) * 1e6;
+    s = load(p, 'result');
+    if isfield(s, 'result') && isfield(s.result, 'phys1') && isfield(s.result.phys1, 'P_b')
+        pb_uW = double(s.result.phys1.P_b) * 1e6;
     else
-        warning('load_pb_uW: P_b not found in %s', p);
+        warning('load_pb_uW: result.phys1.P_b not found in %s', p);
     end
 catch e
     warning('load_pb_uW: failed to load %s — %s', p, e.message);
