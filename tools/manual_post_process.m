@@ -14,13 +14,13 @@ end
 override = struct();
 
 % filters (causal)
-override.causal_filt.s1.skip = true;
-override.causal_filt.s1.bestLP = 1;
-override.causal_filt.s1.bestHP = 0.01;
+override.causal_filt.s1.skip = false;
+override.causal_filt.s1.bestLP = 1.08571429;
+override.causal_filt.s1.bestHP = 0.7;
 
 override.causal_filt.s2.skip = true;
-override.causal_filt.s2.bestLP = 0.6;
-override.causal_filt.s2.bestHP = 0.5;
+override.causal_filt.s2.bestLP = 1.08571429;
+override.causal_filt.s2.bestHP = 0.7;
 
 % detrend
 override.detrend.s1.skip = false;
@@ -106,47 +106,47 @@ cfg.verbose = true;
 
 % S1
 [out,cfg] = causal_filter(out,cfg,override,'s1');
+% 
+% fprintf('fs = %.1f Hz\n', out.s1.fs);
+% fprintf('Rb = %.1f Hz\n', cfg.s1.pipeline.Rb);
+% fprintf('LP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio * cfg.s1.pipeline.Rb);
+% fprintf('HP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio_hp * cfg.s1.pipeline.Rb);
 
-fprintf('fs = %.1f Hz\n', out.s1.fs);
-fprintf('Rb = %.1f Hz\n', cfg.s1.pipeline.Rb);
-fprintf('LP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio * cfg.s1.pipeline.Rb);
-fprintf('HP cutoff = %.1f Hz\n', cfg.s1.pipeline.filter.ratio_hp * cfg.s1.pipeline.Rb);
-
-
-
-return
 
 % S2
 [out,cfg] = causal_filter(out,cfg,override,'s2');
 
-% debugging
-% plot S2 time
-figure; hold on;
-slc = 2e3;
-slc_ds = floor(slc/cfg.s2.pipeline.M);
-slice_filt = out.s2.debug.filtered(1:slc);
-slice_raw = out.s2.debug.raw(1:slc);
-slice_at = out.s2.debug.after_trim(1:slc);
-ds_slice = out.s2.debug.ds.homo(1:slc_ds);
-
-
-t = linspace(1,slc,slc);
-t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
-t_ds = t_ds(t_ds <= slc-1);
-plot(t,slice_filt,'DisplayName','Filtered');
-plot(t,slice_at.*20,'DisplayName','After Trim');
-scatter(t_ds,ds_slice.*20,'DisplayName','DS');
-legend;
-theme light;
-ylim([min(slice_filt) max(slice_filt)]);
-
-
-% plot s2 hist
-figure; hold on;
-histogram(out.s2.debug.class.xp,NumBins=4e1);
-histogram(out.s2.debug.class.xm,NumBins=4e1);
-
+simple_summary(out);
 return
+
+% % debugging
+% % plot S2 time
+% figure; hold on;
+% slc = 2e3;
+% slc_ds = floor(slc/cfg.s2.pipeline.M);
+% slice_filt = out.s2.debug.filtered(1:slc);
+% slice_raw = out.s2.debug.raw(1:slc);
+% slice_at = out.s2.debug.after_trim(1:slc);
+% ds_slice = out.s2.debug.ds.homo(1:slc_ds);
+% 
+% 
+% t = linspace(1,slc,slc);
+% t_ds = (1 + cfg.s2.pipeline.phase) : cfg.s2.pipeline.M : slc;
+% t_ds = t_ds(t_ds <= slc-1);
+% plot(t,slice_filt,'DisplayName','Filtered');
+% plot(t,slice_at.*20,'DisplayName','After Trim');
+% scatter(t_ds,ds_slice.*20,'DisplayName','DS');
+% legend;
+% theme light;
+% ylim([min(slice_filt) max(slice_filt)]);
+% 
+% 
+% % plot s2 hist
+% figure; hold on;
+% histogram(out.s2.debug.class.xp,NumBins=4e1);
+% histogram(out.s2.debug.class.xm,NumBins=4e1);
+
+% return
 
 
 
@@ -188,19 +188,7 @@ cfg.verbose = true;
 
 
 %% Simple summary
-fprintf('\nManual post-processing summary\n');
-fprintf('S1 SNRe: %.6f (N=%d)\n', out.s1.snre, out.s1.n_points);
-fprintf('S2 SNRe: %.6f (N=%d)\n', out.s2.snre, out.s2.n_points);
-if isfield(out.s1, 'snr_c') && isfinite(out.s1.snr_c)
-    fprintf('S1 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s1.snr_c, out.s1.margin, out.s1.adv_db);
-else
-    fprintf('S1 SNRc: n/a (processed_summary.json missing or invalid)\n');
-end
-if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
-    fprintf('S2 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s2.snr_c, out.s2.margin, out.s2.adv_db);
-else
-    fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
-end
+simple_summary(out);
 
 % load P_b from processed.mat (stored in W, reported in uW)
 pb_s1_uW = load_pb_uW(cfg.paths.s1_run_dir);
@@ -243,7 +231,7 @@ p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=8;
+p.gridSize=6;
 p.Rb=8e3; % bit rate
 
 end
@@ -368,7 +356,7 @@ switch lower(string(fcfg.mode))
     case "ratio_hp_lp_causal"
         % low pass
         cutoff = fcfg.ratio * Rb;
-        [z,p,k] = butter(15, cutoff/(fs/2), "low");
+        [z,p,k] = butter(8, cutoff/(fs/2), "low");
         sos = zp2sos(z,p,k);           % convert to SOS
         y = sosfilt(sos, x);           % numerically stable filtering
 
@@ -380,7 +368,7 @@ switch lower(string(fcfg.mode))
 
     case "fft_lp_ratio_causal"
         cutoff = fcfg.ratio * Rb;
-        [b,a] = butter(15,cutoff/(fs/2),"low");
+        [b,a] = butter(8,cutoff/(fs/2),"low");
         y = filter(b,a,x);
 
     case "moving_average"
@@ -1271,5 +1259,21 @@ elseif(strcmp(select,'s2'))
         out.s2.snre,out.s2.adv_db);
 else
     disp('error');
+end
+end
+
+function simple_summary(out)
+fprintf('\nManual post-processing summary\n');
+fprintf('S1 SNRe: %.6f (N=%d)\n', out.s1.snre, out.s1.n_points);
+fprintf('S2 SNRe: %.6f (N=%d)\n', out.s2.snre, out.s2.n_points);
+if isfield(out.s1, 'snr_c') && isfinite(out.s1.snr_c)
+    fprintf('S1 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s1.snr_c, out.s1.margin, out.s1.adv_db);
+else
+    fprintf('S1 SNRc: n/a (processed_summary.json missing or invalid)\n');
+end
+if isfield(out.s2, 'snr_c') && isfinite(out.s2.snr_c)
+    fprintf('S2 SNRc: %.6f | margin: %+0.6f | adv(dB): %+0.6f\n', out.s2.snr_c, out.s2.margin, out.s2.adv_db);
+else
+    fprintf('S2 SNRc: n/a (processed_summary.json missing or invalid)\n');
 end
 end
