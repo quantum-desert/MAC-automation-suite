@@ -49,13 +49,16 @@ cfg = struct();
 
 
 %% Explicit dataset roots (best S1/S2 from Advantage_Data/Deterministic)
-cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
-    'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
-    'Deterministic/positive_margin_4-22_batch2/batch_2/run_00151'];
-cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
-    'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
-    'Deterministic/positive_margin_4-20/batch_4/run_01082'];
+% cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+%     'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
+%     'Deterministic/positive_margin_4-22_batch2/batch_2/run_00151'];
+% cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/' ...
+%     'GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/Advantage_Data/' ...
+%     'Deterministic/positive_margin_4-20/batch_4/run_01082'];
 
+
+cfg.paths.s1_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/NB_sweep_Data/Pb_1227uW_S1_batch_2_run_00440'];
+cfg.paths.s2_run_dir = ['/Users/agentatom/Library/CloudStorage/OneDrive-Umich/GraduateSchool/UM/QE_LAB/QINET/data/codex_processing/NB_sweep_Data/Pb_1227uW_S2_batch_2_run_00350'];
 %% Channel file mapping (MAC convention)
 % S1: homodyne from scope_*_2.csv, modulation from scope_*_1.csv
 % S2: homodyne from scope_*_3.csv, modulation from scope_*_4.csv
@@ -162,6 +165,7 @@ pb_s1_uW = load_pb_uW(cfg.paths.s1_run_dir);
 pb_s2_uW = load_pb_uW(cfg.paths.s2_run_dir);
 
 % tab-separated results (paste into Excel)
+fprintf('\nPrinting order: row 1 = S1; row 2 = S2\n');
 fprintf('\nP_b (uW)\tLP Ratio\tHP Ratio\tDetrend Window\tPhase\tLag\tSNRe Adv. (dB)\n');
 fprintf('%.4f\t%.8f\t%.8f\t%d\t%d\t%d\t%.4f\n', ...
     pb_s1_uW, cfg.s1.pipeline.filter.ratio, cfg.s1.pipeline.filter.ratio_hp, ...
@@ -197,7 +201,7 @@ p.filter.window = 8;              % for moving_average
 p.filter.cutoff_hz = 6000;        % for causal_1pole_lp
 p.filter.N = p.M;                 % for boxcar window length
 
-p.gridSize=3;
+p.gridSize=30;
 end
 
 function result = run_single_dataset(run_dir, ch_cfg, channel_name,verbose)
